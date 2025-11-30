@@ -4141,10 +4141,31 @@ class TransportPlannerApp:
             messagebox.showinfo(
                 "Planning inexistant",
                 f"Le planning pour le {format_date_display(d)} n'existe pas encore.\n\n"
-                "Contactez un administrateur pour créer ou générer ce planning."
+                "Contactez votre responsable pour générer ce planning."
             )
             self.missions = []
             self.refresh_planning_view(preserve_ui=preserve_ui)
+        else:
+            # Charger les missions depuis les fichiers JSON
+            self.missions = []
+            for file in day_dir.glob("*.json"):
+                data = load_json(file, None)
+                if not data:
+                    continue
+                data["_path"] = file.as_posix()
+
+                if "chauffeur_nom" in data and "chauffeur_id" not in data:
+                    chauffeur_nom = data["chauffeur_nom"]
+                    for ch in self.chauffeurs:
+                        if ch.get("nom_affichage") == chauffeur_nom:
+                            data["chauffeur_id"] = ch["id"]
+                            break
+
+                self.missions.append(data)
+            self.refresh_planning_view(preserve_ui=preserve_ui)
+            if hasattr(self, "existing_dates_combo"):
+                self.existing_dates_combo["values"] = list_existing_dates()
+
         # Mettre à jour aussi les vues liées aux chauffeurs (disponibilités, utilisés, calendrier)
         try:
             if hasattr(self, 'drivers_used_frame'):
@@ -4155,25 +4176,6 @@ class TransportPlannerApp:
                 self.refresh_calendar()
         except Exception as e:
             print(f"Erreur lors de la mise à jour des vues chauffeurs après rechargement du planning: {e}")
-            return
-        self.missions = []
-        for file in day_dir.glob("*.json"):
-            data = load_json(file, None)
-            if not data:
-                continue
-            data["_path"] = file.as_posix()
-            
-            if "chauffeur_nom" in data and "chauffeur_id" not in data:
-                chauffeur_nom = data["chauffeur_nom"]
-                for ch in self.chauffeurs:
-                    if ch.get("nom_affichage") == chauffeur_nom:
-                        data["chauffeur_id"] = ch["id"]
-                        break
-            
-            self.missions.append(data)
-        self.refresh_planning_view(preserve_ui=preserve_ui)
-        if hasattr(self, "existing_dates_combo"):
-            self.existing_dates_combo["values"] = list_existing_dates()
 
     def refresh_planning_view(self, preserve_ui=False):
         if preserve_ui:
