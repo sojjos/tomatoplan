@@ -809,7 +809,7 @@ def export_treeview_to_excel(tree, filename, sheet_name="Planning", title="Plann
                 try:
                     if len(str(cell.value)) > max_length:
                         max_length = len(str(cell.value))
-                except:
+                except Exception:
                     pass
             adjusted_width = min(max_length + 2, 50)
             ws.column_dimensions[column].width = adjusted_width
@@ -2937,7 +2937,7 @@ class TransportPlannerApp:
                         all_data['items'].append((item_id, values, tags))
                     do_search()
                     # win.after(5000, refresh_tree)  # auto-refresh désactivé (rafraîchissement manuel uniquement)
-                except:
+                except Exception:
                     pass
         
         self._fill_consolidated_view(tree, sort_by="driver")
@@ -3104,7 +3104,7 @@ class TransportPlannerApp:
                         all_data['items'].append((item_id, values, tags))
                     do_search()
                     # win.after(5000, refresh_tree)  # auto-refresh désactivé (rafraîchissement manuel uniquement)
-                except:
+                except Exception:
                     pass
         
         self._fill_consolidated_view(tree, sort_by="time")
@@ -3289,7 +3289,7 @@ class TransportPlannerApp:
                         all_data['items'].append((item_id, values, tags))
                     do_search()
                     # win.after(5000, refresh_tree)  # auto-refresh désactivé (rafraîchissement manuel uniquement)
-                except:
+                except Exception:
                     pass
         
         self._fill_consolidated_view(tree, sort_by="voyage")
@@ -5040,7 +5040,7 @@ class TransportPlannerApp:
                         if (dispo_date.year == self.calendar_current_year and 
                             dispo_date.month == self.calendar_current_month):
                             dispos_dict[dispo_date.day] = dispo["disponible"]
-                    except:
+                    except Exception:
                         pass
         
         current_day = 1
@@ -5226,7 +5226,7 @@ class TransportPlannerApp:
         
         try:
             nb_months = int(self.recur_months_var.get())
-        except:
+        except Exception:
             nb_months = 3
         
         weekday_target = None
@@ -5966,7 +5966,7 @@ class TransportPlannerApp:
             try:
                 d = datetime.strptime(date_str, "%Y-%m-%d").date()
                 date_display = format_date_display(d)
-            except:
+            except Exception:
                 date_display = date_str
             
             rev = self.revenus_palettes[date_str]
@@ -6249,7 +6249,7 @@ class TransportPlannerApp:
                             try:
                                 d = datetime.strptime(date_str, "%Y-%m-%d").date()
                                 date_display = format_date_display(d)
-                            except:
+                            except Exception:
                                 date_display = date_str
                             text += f"    {date_display} : {tarif:.2f} €\n"
                         if len(sorted_dates) > 5:
@@ -7075,7 +7075,7 @@ class TransportPlannerApp:
             container_width = self.charts_container.winfo_width()
             if container_width < 100:
                 container_width = 1200
-        except:
+        except Exception:
             container_width = 1200
         
         # Taille des figures
@@ -8349,7 +8349,7 @@ class TransportPlannerApp:
                             'selection': list(tree.selection()),
                             'yview': tree.yview()[0] if tree.yview() else 0
                         }
-                    except:
+                    except Exception:
                         pass
         
         # Sauvegarder la sélection des chauffeurs
@@ -8359,7 +8359,7 @@ class TransportPlannerApp:
                     'selection': list(self.tree_ch.selection()),
                     'yview': self.tree_ch.yview()[0] if self.tree_ch.yview() else 0
                 }
-            except:
+            except Exception:
                 pass
         
         # Sauvegarder la sélection des voyages
@@ -8369,7 +8369,7 @@ class TransportPlannerApp:
                     'selection': list(self.tree_voy.selection()),
                     'yview': self.tree_voy.yview()[0] if self.tree_voy.yview() else 0
                 }
-            except:
+            except Exception:
                 pass
         
         return selections
@@ -8395,7 +8395,7 @@ class TransportPlannerApp:
                                 # Restaurer le scroll
                                 if 'yview' in saved:
                                     tree.yview_moveto(saved['yview'])
-                            except:
+                            except Exception:
                                 pass
         
         # Restaurer la sélection des chauffeurs
@@ -8407,7 +8407,7 @@ class TransportPlannerApp:
                         self.tree_ch.selection_set(item_id)
                 if 'yview' in saved:
                     self.tree_ch.yview_moveto(saved['yview'])
-            except:
+            except Exception:
                 pass
         
         # Restaurer la sélection des voyages
@@ -8419,7 +8419,7 @@ class TransportPlannerApp:
                         self.tree_voy.selection_set(item_id)
                 if 'yview' in saved:
                     self.tree_voy.yview_moveto(saved['yview'])
-            except:
+            except Exception:
                 pass
     
     def smart_refresh_planning(self):
