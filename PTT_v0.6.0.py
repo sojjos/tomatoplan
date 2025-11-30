@@ -1094,24 +1094,24 @@ def generate_export_filename(prefix="extraction_planning", extension="pdf"):
 def export_treeview_to_excel(tree, filename, sheet_name="Planning", title="Planning Export"):
     if not EXCEL_AVAILABLE:
         return False, "Module openpyxl non disponible"
-    
+
     try:
         import openpyxl
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-        
+
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = sheet_name
-        
+
         ws.merge_cells('A1:G1')
         title_cell = ws['A1']
         title_cell.value = title
         title_cell.font = Font(size=14, bold=True)
         title_cell.alignment = Alignment(horizontal='center')
-        
+
         columns = tree["columns"]
         headers = [tree.heading(col)["text"] for col in columns]
-        
+
         for col_idx, header in enumerate(headers, start=1):
             cell = ws.cell(row=3, column=col_idx)
             cell.value = header
@@ -1124,7 +1124,7 @@ def export_treeview_to_excel(tree, filename, sheet_name="Planning", title="Plann
                 top=Side(style='thin'),
                 bottom=Side(style='thin')
             )
-        
+
         row_idx = 4
         for item in tree.get_children():
             values = tree.item(item)["values"]
@@ -1138,7 +1138,7 @@ def export_treeview_to_excel(tree, filename, sheet_name="Planning", title="Plann
                     bottom=Side(style='thin')
                 )
             row_idx += 1
-        
+
         for col in ws.columns:
             max_length = 0
             column = col[0].column_letter
@@ -1150,12 +1150,832 @@ def export_treeview_to_excel(tree, filename, sheet_name="Planning", title="Plann
                     pass
             adjusted_width = min(max_length + 2, 50)
             ws.column_dimensions[column].width = adjusted_width
-        
+
         wb.save(filename)
         return True, f"Fichier Excel créé: {filename}"
-    
+
     except Exception as e:
         return False, f"Erreur lors de l'export Excel: {str(e)}"
+
+def open_exported_file(filepath):
+    """Ouvre le fichier exporté avec l'application par défaut"""
+    import os
+    import platform
+    import subprocess
+    try:
+        if platform.system() == 'Windows':
+            os.startfile(str(filepath))
+        elif platform.system() == 'Darwin':  # macOS
+            subprocess.run(['open', str(filepath)])
+        else:  # Linux
+            subprocess.run(['xdg-open', str(filepath)])
+        return True
+    except Exception:
+        return False
+
+def export_planning_excel_par_chauffeur(missions, voyages, current_date, filename):
+    """Export Excel spécialisé pour la vue par Chauffeur - format professionnel"""
+    if not EXCEL_AVAILABLE:
+        return False, "Module openpyxl non disponible"
+
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, NamedStyle
+        from openpyxl.utils import get_column_letter
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Planning Chauffeurs"
+
+        # Styles
+        header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        title_font = Font(bold=True, size=16, color="1F4E79")
+        subtitle_font = Font(bold=True, size=12, color="666666")
+        group_fill = PatternFill(start_color="D6E3F8", end_color="D6E3F8", fill_type="solid")
+        group_font = Font(bold=True, size=11, color="1F4E79")
+        data_font = Font(size=10)
+        border_thin = Border(
+            left=Side(style='thin', color='CCCCCC'),
+            right=Side(style='thin', color='CCCCCC'),
+            top=Side(style='thin', color='CCCCCC'),
+            bottom=Side(style='thin', color='CCCCCC')
+        )
+        center_align = Alignment(horizontal='center', vertical='center')
+        left_align = Alignment(horizontal='left', vertical='center')
+
+        # En-tête du document
+        ws.merge_cells('A1:H1')
+        ws['A1'] = "PLANNING PAR CHAUFFEUR"
+        ws['A1'].font = title_font
+        ws['A1'].alignment = center_align
+
+        ws.merge_cells('A2:H2')
+        ws['A2'] = f"Date: {format_date_display(current_date)}"
+        ws['A2'].font = subtitle_font
+        ws['A2'].alignment = center_align
+
+        # Statistiques rapides
+        total_missions = len([m for m in missions if not str(m.get("chauffeur_nom", "")).startswith("─")])
+        total_palettes = sum(int(m.get("nb_pal", 0)) for m in missions if str(m.get("nb_pal", "")).isdigit())
+        chauffeurs_uniques = len(set(m.get("chauffeur_nom", "") for m in missions if m.get("chauffeur_nom") and not str(m.get("chauffeur_nom", "")).startswith("─")))
+
+        ws.merge_cells('A3:H3')
+        ws['A3'] = f"Total: {total_missions} missions | {total_palettes} palettes | {chauffeurs_uniques} chauffeurs"
+        ws['A3'].font = Font(size=10, italic=True, color="888888")
+        ws['A3'].alignment = center_align
+
+        # En-têtes de colonnes (ligne 5)
+        headers = ["Chauffeur", "N°", "Heure", "Type", "Voyage", "Palettes", "SST", "Pays", "Infos"]
+        col_widths = [20, 6, 10, 12, 12, 10, 15, 15, 30]
+
+        for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
+            cell = ws.cell(row=5, column=col_idx)
+            cell.value = header
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_align
+            cell.border = border_thin
+            ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+        # Regrouper les missions par chauffeur
+        v_by_code = {v.get("code"): v for v in voyages}
+        missions_by_driver = {}
+        for m in missions:
+            driver = m.get("chauffeur_nom", "Non assigné")
+            if driver and not str(driver).startswith("─"):
+                if driver not in missions_by_driver:
+                    missions_by_driver[driver] = []
+                missions_by_driver[driver].append(m)
+
+        row_idx = 6
+        for driver_name in sorted(missions_by_driver.keys()):
+            driver_missions = missions_by_driver[driver_name]
+
+            # Ligne de groupe pour le chauffeur
+            ws.merge_cells(f'A{row_idx}:I{row_idx}')
+            driver_palettes = sum(int(m.get("nb_pal", 0)) for m in driver_missions if str(m.get("nb_pal", "")).isdigit())
+            ws.cell(row=row_idx, column=1).value = f"  {driver_name} ({len(driver_missions)} missions, {driver_palettes} pal.)"
+            ws.cell(row=row_idx, column=1).font = group_font
+            ws.cell(row=row_idx, column=1).fill = group_fill
+            ws.cell(row=row_idx, column=1).alignment = left_align
+            row_idx += 1
+
+            # Trier les missions par numéro
+            sorted_missions = sorted(driver_missions, key=lambda x: int(x.get("numero", 0)) if str(x.get("numero", "")).isdigit() else 0)
+
+            for m in sorted_missions:
+                voyage_code = m.get("voyage", "")
+                voyage = v_by_code.get(voyage_code, {})
+                country = voyage.get("country", "Belgique")
+
+                values = [
+                    "",  # Chauffeur vide (déjà affiché dans le groupe)
+                    m.get("numero", ""),
+                    m.get("heure", ""),
+                    m.get("type", ""),
+                    voyage_code,
+                    m.get("nb_pal", ""),
+                    m.get("sst", ""),
+                    country,
+                    m.get("infos", "")
+                ]
+
+                for col_idx, value in enumerate(values, start=1):
+                    cell = ws.cell(row=row_idx, column=col_idx)
+                    cell.value = value
+                    cell.font = data_font
+                    cell.border = border_thin
+                    cell.alignment = center_align if col_idx in [2, 3, 4, 5, 6] else left_align
+
+                # Colorer selon le type
+                type_cell = ws.cell(row=row_idx, column=4)
+                if m.get("type") == "LIVRAISON":
+                    type_cell.fill = PatternFill(start_color="E8F5E9", end_color="E8F5E9", fill_type="solid")
+                elif m.get("type") == "RAMASSE":
+                    type_cell.fill = PatternFill(start_color="FFF3E0", end_color="FFF3E0", fill_type="solid")
+
+                row_idx += 1
+
+            row_idx += 1  # Espace entre les groupes
+
+        # Pied de page
+        ws.cell(row=row_idx + 1, column=1).value = f"Exporté le {datetime.now().strftime('%d/%m/%Y à %H:%M')}"
+        ws.cell(row=row_idx + 1, column=1).font = Font(size=8, italic=True, color="999999")
+
+        wb.save(filename)
+        open_exported_file(filename)
+        return True, f"Export Excel créé et ouvert: {filename}"
+
+    except Exception as e:
+        return False, f"Erreur lors de l'export Excel: {str(e)}"
+
+def export_planning_excel_par_heure(missions, voyages, current_date, filename):
+    """Export Excel spécialisé pour la vue par Heure - format chronologique"""
+    if not EXCEL_AVAILABLE:
+        return False, "Module openpyxl non disponible"
+
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Planning Horaire"
+
+        # Styles
+        header_fill = PatternFill(start_color="2E7D32", end_color="2E7D32", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        title_font = Font(bold=True, size=16, color="2E7D32")
+        subtitle_font = Font(bold=True, size=12, color="666666")
+        time_fill = PatternFill(start_color="E8F5E9", end_color="E8F5E9", fill_type="solid")
+        time_font = Font(bold=True, size=11, color="2E7D32")
+        data_font = Font(size=10)
+        border_thin = Border(
+            left=Side(style='thin', color='CCCCCC'),
+            right=Side(style='thin', color='CCCCCC'),
+            top=Side(style='thin', color='CCCCCC'),
+            bottom=Side(style='thin', color='CCCCCC')
+        )
+        center_align = Alignment(horizontal='center', vertical='center')
+        left_align = Alignment(horizontal='left', vertical='center')
+
+        # En-tête
+        ws.merge_cells('A1:I1')
+        ws['A1'] = "PLANNING CHRONOLOGIQUE"
+        ws['A1'].font = title_font
+        ws['A1'].alignment = center_align
+
+        ws.merge_cells('A2:I2')
+        ws['A2'] = f"Date: {format_date_display(current_date)}"
+        ws['A2'].font = subtitle_font
+        ws['A2'].alignment = center_align
+
+        # Statistiques
+        total_missions = len([m for m in missions if m.get("heure")])
+        livraisons = len([m for m in missions if m.get("type") == "LIVRAISON"])
+        ramasses = len([m for m in missions if m.get("type") == "RAMASSE"])
+
+        ws.merge_cells('A3:I3')
+        ws['A3'] = f"Total: {total_missions} missions | {livraisons} livraisons | {ramasses} ramasses"
+        ws['A3'].font = Font(size=10, italic=True, color="888888")
+        ws['A3'].alignment = center_align
+
+        # En-têtes
+        headers = ["Heure", "Type", "Voyage", "Chauffeur", "N°", "Palettes", "SST", "Pays", "Infos"]
+        col_widths = [10, 12, 12, 20, 6, 10, 15, 15, 30]
+
+        for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
+            cell = ws.cell(row=5, column=col_idx)
+            cell.value = header
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_align
+            cell.border = border_thin
+            ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+        # Trier par heure
+        v_by_code = {v.get("code"): v for v in voyages}
+
+        def time_key(m):
+            heure = m.get("heure", "99:99")
+            try:
+                parts = heure.replace("h", ":").replace("H", ":").split(":")
+                return int(parts[0]) * 60 + int(parts[1]) if len(parts) >= 2 else 9999
+            except:
+                return 9999
+
+        sorted_missions = sorted([m for m in missions if m.get("heure")], key=time_key)
+
+        row_idx = 6
+        last_hour = None
+
+        for m in sorted_missions:
+            heure = m.get("heure", "")
+            current_hour = heure.split(":")[0] if ":" in heure else heure.split("h")[0] if "h" in heure else ""
+
+            # Séparateur d'heure
+            if current_hour != last_hour and current_hour:
+                if last_hour is not None:
+                    row_idx += 1
+                ws.merge_cells(f'A{row_idx}:I{row_idx}')
+                ws.cell(row=row_idx, column=1).value = f"  {current_hour}h00 - {current_hour}h59"
+                ws.cell(row=row_idx, column=1).font = time_font
+                ws.cell(row=row_idx, column=1).fill = time_fill
+                ws.cell(row=row_idx, column=1).alignment = left_align
+                last_hour = current_hour
+                row_idx += 1
+
+            voyage_code = m.get("voyage", "")
+            voyage = v_by_code.get(voyage_code, {})
+            country = voyage.get("country", "Belgique")
+
+            values = [
+                heure,
+                m.get("type", ""),
+                voyage_code,
+                m.get("chauffeur_nom", ""),
+                m.get("numero", ""),
+                m.get("nb_pal", ""),
+                m.get("sst", ""),
+                country,
+                m.get("infos", "")
+            ]
+
+            for col_idx, value in enumerate(values, start=1):
+                cell = ws.cell(row=row_idx, column=col_idx)
+                cell.value = value
+                cell.font = data_font
+                cell.border = border_thin
+                cell.alignment = center_align if col_idx in [1, 2, 3, 5, 6] else left_align
+
+            # Colorer selon le type
+            type_cell = ws.cell(row=row_idx, column=2)
+            if m.get("type") == "LIVRAISON":
+                type_cell.fill = PatternFill(start_color="C8E6C9", end_color="C8E6C9", fill_type="solid")
+                type_cell.font = Font(size=10, bold=True, color="2E7D32")
+            elif m.get("type") == "RAMASSE":
+                type_cell.fill = PatternFill(start_color="FFE0B2", end_color="FFE0B2", fill_type="solid")
+                type_cell.font = Font(size=10, bold=True, color="E65100")
+
+            row_idx += 1
+
+        # Pied de page
+        ws.cell(row=row_idx + 2, column=1).value = f"Exporté le {datetime.now().strftime('%d/%m/%Y à %H:%M')}"
+        ws.cell(row=row_idx + 2, column=1).font = Font(size=8, italic=True, color="999999")
+
+        wb.save(filename)
+        open_exported_file(filename)
+        return True, f"Export Excel créé et ouvert: {filename}"
+
+    except Exception as e:
+        return False, f"Erreur lors de l'export Excel: {str(e)}"
+
+def export_planning_excel_par_voyage(missions, voyages, current_date, filename):
+    """Export Excel spécialisé pour la vue par Voyage - format groupé par destination"""
+    if not EXCEL_AVAILABLE:
+        return False, "Module openpyxl non disponible"
+
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Planning Voyages"
+
+        # Styles
+        header_fill = PatternFill(start_color="5E35B1", end_color="5E35B1", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF", size=11)
+        title_font = Font(bold=True, size=16, color="5E35B1")
+        subtitle_font = Font(bold=True, size=12, color="666666")
+        voyage_fill = PatternFill(start_color="EDE7F6", end_color="EDE7F6", fill_type="solid")
+        voyage_font = Font(bold=True, size=11, color="5E35B1")
+        data_font = Font(size=10)
+        border_thin = Border(
+            left=Side(style='thin', color='CCCCCC'),
+            right=Side(style='thin', color='CCCCCC'),
+            top=Side(style='thin', color='CCCCCC'),
+            bottom=Side(style='thin', color='CCCCCC')
+        )
+        center_align = Alignment(horizontal='center', vertical='center')
+        left_align = Alignment(horizontal='left', vertical='center')
+
+        # En-tête
+        ws.merge_cells('A1:I1')
+        ws['A1'] = "PLANNING PAR VOYAGE"
+        ws['A1'].font = title_font
+        ws['A1'].alignment = center_align
+
+        ws.merge_cells('A2:I2')
+        ws['A2'] = f"Date: {format_date_display(current_date)}"
+        ws['A2'].font = subtitle_font
+        ws['A2'].alignment = center_align
+
+        # Statistiques
+        v_by_code = {v.get("code"): v for v in voyages}
+        voyages_uniques = len(set(m.get("voyage", "") for m in missions if m.get("voyage")))
+        total_palettes = sum(int(m.get("nb_pal", 0)) for m in missions if str(m.get("nb_pal", "")).isdigit())
+
+        ws.merge_cells('A3:I3')
+        ws['A3'] = f"Total: {voyages_uniques} voyages | {len(missions)} missions | {total_palettes} palettes"
+        ws['A3'].font = Font(size=10, italic=True, color="888888")
+        ws['A3'].alignment = center_align
+
+        # En-têtes
+        headers = ["Voyage", "Pays", "Type", "Heure", "Chauffeur", "N°", "Palettes", "SST", "Infos"]
+        col_widths = [12, 15, 12, 10, 20, 6, 10, 15, 30]
+
+        for col_idx, (header, width) in enumerate(zip(headers, col_widths), start=1):
+            cell = ws.cell(row=5, column=col_idx)
+            cell.value = header
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_align
+            cell.border = border_thin
+            ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+        # Regrouper par voyage
+        missions_by_voyage = {}
+        for m in missions:
+            voyage_code = m.get("voyage", "Sans voyage")
+            if voyage_code not in missions_by_voyage:
+                missions_by_voyage[voyage_code] = []
+            missions_by_voyage[voyage_code].append(m)
+
+        row_idx = 6
+        for voyage_code in sorted(missions_by_voyage.keys()):
+            voyage_missions = missions_by_voyage[voyage_code]
+            voyage = v_by_code.get(voyage_code, {})
+            country = voyage.get("country", "Belgique")
+
+            # Ligne de groupe
+            voyage_palettes = sum(int(m.get("nb_pal", 0)) for m in voyage_missions if str(m.get("nb_pal", "")).isdigit())
+            ws.merge_cells(f'A{row_idx}:I{row_idx}')
+            ws.cell(row=row_idx, column=1).value = f"  {voyage_code} - {country} ({len(voyage_missions)} missions, {voyage_palettes} pal.)"
+            ws.cell(row=row_idx, column=1).font = voyage_font
+            ws.cell(row=row_idx, column=1).fill = voyage_fill
+            ws.cell(row=row_idx, column=1).alignment = left_align
+            row_idx += 1
+
+            # Trier par heure
+            def time_key(m):
+                heure = m.get("heure", "99:99")
+                try:
+                    parts = heure.replace("h", ":").replace("H", ":").split(":")
+                    return int(parts[0]) * 60 + int(parts[1]) if len(parts) >= 2 else 9999
+                except:
+                    return 9999
+
+            sorted_missions = sorted(voyage_missions, key=time_key)
+
+            for m in sorted_missions:
+                values = [
+                    "",  # Voyage vide (déjà affiché)
+                    "",  # Pays vide (déjà affiché)
+                    m.get("type", ""),
+                    m.get("heure", ""),
+                    m.get("chauffeur_nom", ""),
+                    m.get("numero", ""),
+                    m.get("nb_pal", ""),
+                    m.get("sst", ""),
+                    m.get("infos", "")
+                ]
+
+                for col_idx, value in enumerate(values, start=1):
+                    cell = ws.cell(row=row_idx, column=col_idx)
+                    cell.value = value
+                    cell.font = data_font
+                    cell.border = border_thin
+                    cell.alignment = center_align if col_idx in [3, 4, 6, 7] else left_align
+
+                # Colorer selon le type
+                type_cell = ws.cell(row=row_idx, column=3)
+                if m.get("type") == "LIVRAISON":
+                    type_cell.fill = PatternFill(start_color="E8F5E9", end_color="E8F5E9", fill_type="solid")
+                elif m.get("type") == "RAMASSE":
+                    type_cell.fill = PatternFill(start_color="FFF3E0", end_color="FFF3E0", fill_type="solid")
+
+                row_idx += 1
+
+            row_idx += 1  # Espace entre les groupes
+
+        # Pied de page
+        ws.cell(row=row_idx + 1, column=1).value = f"Exporté le {datetime.now().strftime('%d/%m/%Y à %H:%M')}"
+        ws.cell(row=row_idx + 1, column=1).font = Font(size=8, italic=True, color="999999")
+
+        wb.save(filename)
+        open_exported_file(filename)
+        return True, f"Export Excel créé et ouvert: {filename}"
+
+    except Exception as e:
+        return False, f"Erreur lors de l'export Excel: {str(e)}"
+
+def export_planning_pdf_par_chauffeur(missions, voyages, current_date, filename):
+    """Export PDF spécialisé pour la vue par Chauffeur - format professionnel"""
+    if not PDF_AVAILABLE:
+        return False, "Module reportlab non disponible"
+
+    try:
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib import colors
+        from reportlab.lib.units import cm, mm
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT
+
+        doc = SimpleDocTemplate(str(filename), pagesize=landscape(A4),
+                               leftMargin=1*cm, rightMargin=1*cm,
+                               topMargin=1*cm, bottomMargin=1*cm)
+        elements = []
+        styles = getSampleStyleSheet()
+
+        # Styles personnalisés
+        title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'],
+                                     fontSize=18, textColor=colors.HexColor('#1F4E79'),
+                                     alignment=TA_CENTER, spaceAfter=5)
+        subtitle_style = ParagraphStyle('SubtitleStyle', parent=styles['Normal'],
+                                        fontSize=12, textColor=colors.HexColor('#666666'),
+                                        alignment=TA_CENTER, spaceAfter=3)
+        stats_style = ParagraphStyle('StatsStyle', parent=styles['Normal'],
+                                     fontSize=9, textColor=colors.HexColor('#888888'),
+                                     alignment=TA_CENTER, spaceAfter=15)
+        group_style = ParagraphStyle('GroupStyle', parent=styles['Normal'],
+                                     fontSize=10, textColor=colors.HexColor('#1F4E79'),
+                                     fontName='Helvetica-Bold', spaceBefore=10, spaceAfter=3)
+        footer_style = ParagraphStyle('FooterStyle', parent=styles['Normal'],
+                                      fontSize=8, textColor=colors.HexColor('#999999'),
+                                      alignment=TA_CENTER)
+
+        # En-tête
+        elements.append(Paragraph("PLANNING PAR CHAUFFEUR", title_style))
+        elements.append(Paragraph(f"Date: {format_date_display(current_date)}", subtitle_style))
+
+        # Statistiques
+        total_missions = len([m for m in missions if not str(m.get("chauffeur_nom", "")).startswith("─")])
+        total_palettes = sum(int(m.get("nb_pal", 0)) for m in missions if str(m.get("nb_pal", "")).isdigit())
+        chauffeurs_uniques = len(set(m.get("chauffeur_nom", "") for m in missions if m.get("chauffeur_nom") and not str(m.get("chauffeur_nom", "")).startswith("─")))
+        elements.append(Paragraph(f"Total: {total_missions} missions | {total_palettes} palettes | {chauffeurs_uniques} chauffeurs", stats_style))
+
+        # Regrouper par chauffeur
+        v_by_code = {v.get("code"): v for v in voyages}
+        missions_by_driver = {}
+        for m in missions:
+            driver = m.get("chauffeur_nom", "Non assigné")
+            if driver and not str(driver).startswith("─"):
+                if driver not in missions_by_driver:
+                    missions_by_driver[driver] = []
+                missions_by_driver[driver].append(m)
+
+        # Couleurs
+        header_color = colors.HexColor('#1F4E79')
+        group_color = colors.HexColor('#D6E3F8')
+        livraison_color = colors.HexColor('#E8F5E9')
+        ramasse_color = colors.HexColor('#FFF3E0')
+
+        for driver_name in sorted(missions_by_driver.keys()):
+            driver_missions = missions_by_driver[driver_name]
+            driver_palettes = sum(int(m.get("nb_pal", 0)) for m in driver_missions if str(m.get("nb_pal", "")).isdigit())
+
+            elements.append(Paragraph(f"{driver_name} ({len(driver_missions)} missions, {driver_palettes} palettes)", group_style))
+
+            # Tableau pour ce chauffeur
+            table_data = [["N°", "Heure", "Type", "Voyage", "Palettes", "SST", "Pays", "Infos"]]
+
+            sorted_missions = sorted(driver_missions, key=lambda x: int(x.get("numero", 0)) if str(x.get("numero", "")).isdigit() else 0)
+
+            for m in sorted_missions:
+                voyage_code = m.get("voyage", "")
+                voyage = v_by_code.get(voyage_code, {})
+                country = voyage.get("country", "Belgique")
+                table_data.append([
+                    str(m.get("numero", "")),
+                    m.get("heure", ""),
+                    m.get("type", ""),
+                    voyage_code,
+                    str(m.get("nb_pal", "")),
+                    m.get("sst", ""),
+                    country,
+                    str(m.get("infos", ""))[:30]
+                ])
+
+            col_widths = [25, 50, 70, 60, 50, 80, 80, 150]
+            t = Table(table_data, colWidths=col_widths)
+
+            # Style du tableau
+            table_style = [
+                ('BACKGROUND', (0, 0), (-1, 0), header_color),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 8),
+                ('FONTSIZE', (0, 1), (-1, -1), 8),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('ALIGN', (5, 1), (5, -1), 'LEFT'),
+                ('ALIGN', (7, 1), (7, -1), 'LEFT'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CCCCCC')),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('TOPPADDING', (0, 0), (-1, -1), 3),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ]
+
+            # Colorer les lignes selon le type
+            for idx, m in enumerate(sorted_missions, start=1):
+                if m.get("type") == "LIVRAISON":
+                    table_style.append(('BACKGROUND', (2, idx), (2, idx), livraison_color))
+                elif m.get("type") == "RAMASSE":
+                    table_style.append(('BACKGROUND', (2, idx), (2, idx), ramasse_color))
+
+            t.setStyle(TableStyle(table_style))
+            elements.append(t)
+            elements.append(Spacer(1, 10))
+
+        # Pied de page
+        elements.append(Spacer(1, 20))
+        elements.append(Paragraph(f"Exporté le {datetime.now().strftime('%d/%m/%Y à %H:%M')}", footer_style))
+
+        doc.build(elements)
+        open_exported_file(filename)
+        return True, f"Export PDF créé et ouvert: {filename}"
+
+    except Exception as e:
+        return False, f"Erreur lors de l'export PDF: {str(e)}"
+
+def export_planning_pdf_par_heure(missions, voyages, current_date, filename):
+    """Export PDF spécialisé pour la vue par Heure - format chronologique"""
+    if not PDF_AVAILABLE:
+        return False, "Module reportlab non disponible"
+
+    try:
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib import colors
+        from reportlab.lib.units import cm
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT
+
+        doc = SimpleDocTemplate(str(filename), pagesize=landscape(A4),
+                               leftMargin=1*cm, rightMargin=1*cm,
+                               topMargin=1*cm, bottomMargin=1*cm)
+        elements = []
+        styles = getSampleStyleSheet()
+
+        # Styles
+        title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'],
+                                     fontSize=18, textColor=colors.HexColor('#2E7D32'),
+                                     alignment=TA_CENTER, spaceAfter=5)
+        subtitle_style = ParagraphStyle('SubtitleStyle', parent=styles['Normal'],
+                                        fontSize=12, textColor=colors.HexColor('#666666'),
+                                        alignment=TA_CENTER, spaceAfter=3)
+        stats_style = ParagraphStyle('StatsStyle', parent=styles['Normal'],
+                                     fontSize=9, textColor=colors.HexColor('#888888'),
+                                     alignment=TA_CENTER, spaceAfter=15)
+        footer_style = ParagraphStyle('FooterStyle', parent=styles['Normal'],
+                                      fontSize=8, textColor=colors.HexColor('#999999'),
+                                      alignment=TA_CENTER)
+
+        # En-tête
+        elements.append(Paragraph("PLANNING CHRONOLOGIQUE", title_style))
+        elements.append(Paragraph(f"Date: {format_date_display(current_date)}", subtitle_style))
+
+        # Statistiques
+        total_missions = len([m for m in missions if m.get("heure")])
+        livraisons = len([m for m in missions if m.get("type") == "LIVRAISON"])
+        ramasses = len([m for m in missions if m.get("type") == "RAMASSE"])
+        total_palettes = sum(int(m.get("nb_pal", 0)) for m in missions if str(m.get("nb_pal", "")).isdigit())
+        elements.append(Paragraph(f"Total: {total_missions} missions | {livraisons} livraisons | {ramasses} ramasses | {total_palettes} palettes", stats_style))
+
+        # Couleurs
+        header_color = colors.HexColor('#2E7D32')
+        livraison_color = colors.HexColor('#C8E6C9')
+        ramasse_color = colors.HexColor('#FFE0B2')
+
+        # Trier par heure
+        v_by_code = {v.get("code"): v for v in voyages}
+
+        def time_key(m):
+            heure = m.get("heure", "99:99")
+            try:
+                parts = heure.replace("h", ":").replace("H", ":").split(":")
+                return int(parts[0]) * 60 + int(parts[1]) if len(parts) >= 2 else 9999
+            except:
+                return 9999
+
+        sorted_missions = sorted([m for m in missions if m.get("heure")], key=time_key)
+
+        # Tableau principal
+        table_data = [["Heure", "Type", "Voyage", "Chauffeur", "N°", "Palettes", "SST", "Pays", "Infos"]]
+
+        for m in sorted_missions:
+            voyage_code = m.get("voyage", "")
+            voyage = v_by_code.get(voyage_code, {})
+            country = voyage.get("country", "Belgique")
+            table_data.append([
+                m.get("heure", ""),
+                m.get("type", ""),
+                voyage_code,
+                m.get("chauffeur_nom", ""),
+                str(m.get("numero", "")),
+                str(m.get("nb_pal", "")),
+                m.get("sst", ""),
+                country,
+                str(m.get("infos", ""))[:25]
+            ])
+
+        col_widths = [45, 70, 60, 100, 25, 45, 80, 80, 130]
+        t = Table(table_data, colWidths=col_widths)
+
+        table_style = [
+            ('BACKGROUND', (0, 0), (-1, 0), header_color),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('ALIGN', (3, 1), (3, -1), 'LEFT'),
+            ('ALIGN', (6, 1), (6, -1), 'LEFT'),
+            ('ALIGN', (8, 1), (8, -1), 'LEFT'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CCCCCC')),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F5F5F5')]),
+        ]
+
+        # Colorer selon le type
+        for idx, m in enumerate(sorted_missions, start=1):
+            if m.get("type") == "LIVRAISON":
+                table_style.append(('BACKGROUND', (1, idx), (1, idx), livraison_color))
+            elif m.get("type") == "RAMASSE":
+                table_style.append(('BACKGROUND', (1, idx), (1, idx), ramasse_color))
+
+        t.setStyle(TableStyle(table_style))
+        elements.append(t)
+
+        # Pied de page
+        elements.append(Spacer(1, 20))
+        elements.append(Paragraph(f"Exporté le {datetime.now().strftime('%d/%m/%Y à %H:%M')}", footer_style))
+
+        doc.build(elements)
+        open_exported_file(filename)
+        return True, f"Export PDF créé et ouvert: {filename}"
+
+    except Exception as e:
+        return False, f"Erreur lors de l'export PDF: {str(e)}"
+
+def export_planning_pdf_par_voyage(missions, voyages, current_date, filename):
+    """Export PDF spécialisé pour la vue par Voyage - format groupé par destination"""
+    if not PDF_AVAILABLE:
+        return False, "Module reportlab non disponible"
+
+    try:
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib import colors
+        from reportlab.lib.units import cm
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT
+
+        doc = SimpleDocTemplate(str(filename), pagesize=landscape(A4),
+                               leftMargin=1*cm, rightMargin=1*cm,
+                               topMargin=1*cm, bottomMargin=1*cm)
+        elements = []
+        styles = getSampleStyleSheet()
+
+        # Styles
+        title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'],
+                                     fontSize=18, textColor=colors.HexColor('#5E35B1'),
+                                     alignment=TA_CENTER, spaceAfter=5)
+        subtitle_style = ParagraphStyle('SubtitleStyle', parent=styles['Normal'],
+                                        fontSize=12, textColor=colors.HexColor('#666666'),
+                                        alignment=TA_CENTER, spaceAfter=3)
+        stats_style = ParagraphStyle('StatsStyle', parent=styles['Normal'],
+                                     fontSize=9, textColor=colors.HexColor('#888888'),
+                                     alignment=TA_CENTER, spaceAfter=15)
+        group_style = ParagraphStyle('GroupStyle', parent=styles['Normal'],
+                                     fontSize=10, textColor=colors.HexColor('#5E35B1'),
+                                     fontName='Helvetica-Bold', spaceBefore=10, spaceAfter=3)
+        footer_style = ParagraphStyle('FooterStyle', parent=styles['Normal'],
+                                      fontSize=8, textColor=colors.HexColor('#999999'),
+                                      alignment=TA_CENTER)
+
+        # En-tête
+        elements.append(Paragraph("PLANNING PAR VOYAGE", title_style))
+        elements.append(Paragraph(f"Date: {format_date_display(current_date)}", subtitle_style))
+
+        # Statistiques
+        v_by_code = {v.get("code"): v for v in voyages}
+        voyages_uniques = len(set(m.get("voyage", "") for m in missions if m.get("voyage")))
+        total_palettes = sum(int(m.get("nb_pal", 0)) for m in missions if str(m.get("nb_pal", "")).isdigit())
+        elements.append(Paragraph(f"Total: {voyages_uniques} voyages | {len(missions)} missions | {total_palettes} palettes", stats_style))
+
+        # Couleurs
+        header_color = colors.HexColor('#5E35B1')
+        group_color = colors.HexColor('#EDE7F6')
+        livraison_color = colors.HexColor('#E8F5E9')
+        ramasse_color = colors.HexColor('#FFF3E0')
+
+        # Regrouper par voyage
+        missions_by_voyage = {}
+        for m in missions:
+            voyage_code = m.get("voyage", "Sans voyage")
+            if voyage_code not in missions_by_voyage:
+                missions_by_voyage[voyage_code] = []
+            missions_by_voyage[voyage_code].append(m)
+
+        for voyage_code in sorted(missions_by_voyage.keys()):
+            voyage_missions = missions_by_voyage[voyage_code]
+            voyage = v_by_code.get(voyage_code, {})
+            country = voyage.get("country", "Belgique")
+            voyage_palettes = sum(int(m.get("nb_pal", 0)) for m in voyage_missions if str(m.get("nb_pal", "")).isdigit())
+
+            elements.append(Paragraph(f"{voyage_code} - {country} ({len(voyage_missions)} missions, {voyage_palettes} palettes)", group_style))
+
+            # Tableau
+            table_data = [["Heure", "Type", "Chauffeur", "N°", "Palettes", "SST", "Infos"]]
+
+            def time_key(m):
+                heure = m.get("heure", "99:99")
+                try:
+                    parts = heure.replace("h", ":").replace("H", ":").split(":")
+                    return int(parts[0]) * 60 + int(parts[1]) if len(parts) >= 2 else 9999
+                except:
+                    return 9999
+
+            sorted_missions = sorted(voyage_missions, key=time_key)
+
+            for m in sorted_missions:
+                table_data.append([
+                    m.get("heure", ""),
+                    m.get("type", ""),
+                    m.get("chauffeur_nom", ""),
+                    str(m.get("numero", "")),
+                    str(m.get("nb_pal", "")),
+                    m.get("sst", ""),
+                    str(m.get("infos", ""))[:35]
+                ])
+
+            col_widths = [50, 70, 120, 30, 50, 100, 180]
+            t = Table(table_data, colWidths=col_widths)
+
+            table_style = [
+                ('BACKGROUND', (0, 0), (-1, 0), header_color),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 8),
+                ('FONTSIZE', (0, 1), (-1, -1), 8),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('ALIGN', (2, 1), (2, -1), 'LEFT'),
+                ('ALIGN', (5, 1), (5, -1), 'LEFT'),
+                ('ALIGN', (6, 1), (6, -1), 'LEFT'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CCCCCC')),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('TOPPADDING', (0, 0), (-1, -1), 3),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ]
+
+            # Colorer selon le type
+            for idx, m in enumerate(sorted_missions, start=1):
+                if m.get("type") == "LIVRAISON":
+                    table_style.append(('BACKGROUND', (1, idx), (1, idx), livraison_color))
+                elif m.get("type") == "RAMASSE":
+                    table_style.append(('BACKGROUND', (1, idx), (1, idx), ramasse_color))
+
+            t.setStyle(TableStyle(table_style))
+            elements.append(t)
+            elements.append(Spacer(1, 10))
+
+        # Pied de page
+        elements.append(Spacer(1, 20))
+        elements.append(Paragraph(f"Exporté le {datetime.now().strftime('%d/%m/%Y à %H:%M')}", footer_style))
+
+        doc.build(elements)
+        open_exported_file(filename)
+        return True, f"Export PDF créé et ouvert: {filename}"
+
+    except Exception as e:
+        return False, f"Erreur lors de l'export PDF: {str(e)}"
 
 def export_treeview_to_pdf(tree, filename, title="Planning Export", date_str=""):
     if not PDF_AVAILABLE:
@@ -3335,18 +4155,18 @@ class TransportPlannerApp:
         def export_excel_par_chauffeur():
             desktop = get_desktop_path()
             filename = desktop / generate_export_filename(prefix='planning_par_chauffeur', extension='xlsx')
-            success, message = export_treeview_to_excel(tree, filename, sheet_name='Planning', title=f'Planning par Chauffeur - {format_date_display(self.current_date)}')
+            success, message = export_planning_excel_par_chauffeur(self.missions, self.voyages, self.current_date, filename)
             if success:
-                messagebox.showinfo('Export réussi', message)
+                messagebox.showinfo('Export réussi', f"Fichier exporté sur le bureau et ouvert:\n{filename.name}")
             else:
                 messagebox.showerror('Erreur export', message)
-        
+
         def export_pdf_par_chauffeur():
             desktop = get_desktop_path()
             filename = desktop / generate_export_filename(prefix='planning_par_chauffeur', extension='pdf')
-            success, message = export_treeview_to_pdf(tree, filename, title='Planning par Chauffeur', date_str=format_date_display(self.current_date))
+            success, message = export_planning_pdf_par_chauffeur(self.missions, self.voyages, self.current_date, filename)
             if success:
-                messagebox.showinfo('Export réussi', message)
+                messagebox.showinfo('Export réussi', f"Fichier exporté sur le bureau et ouvert:\n{filename.name}")
             else:
                 messagebox.showerror('Erreur export', message)
         
@@ -3506,18 +4326,18 @@ class TransportPlannerApp:
         def export_excel_par_heure():
             desktop = get_desktop_path()
             filename = desktop / generate_export_filename(prefix='planning_par_heure', extension='xlsx')
-            success, message = export_treeview_to_excel(tree, filename, sheet_name='Planning', title=f'Planning par Heure - {format_date_display(self.current_date)}')
+            success, message = export_planning_excel_par_heure(self.missions, self.voyages, self.current_date, filename)
             if success:
-                messagebox.showinfo('Export réussi', message)
+                messagebox.showinfo('Export réussi', f"Fichier exporté sur le bureau et ouvert:\n{filename.name}")
             else:
                 messagebox.showerror('Erreur export', message)
-        
+
         def export_pdf_par_heure():
             desktop = get_desktop_path()
             filename = desktop / generate_export_filename(prefix='planning_par_heure', extension='pdf')
-            success, message = export_treeview_to_pdf(tree, filename, title='Planning par Heure', date_str=format_date_display(self.current_date))
+            success, message = export_planning_pdf_par_heure(self.missions, self.voyages, self.current_date, filename)
             if success:
-                messagebox.showinfo('Export réussi', message)
+                messagebox.showinfo('Export réussi', f"Fichier exporté sur le bureau et ouvert:\n{filename.name}")
             else:
                 messagebox.showerror('Erreur export', message)
         
@@ -3695,18 +4515,18 @@ class TransportPlannerApp:
         def export_excel_par_voyage():
             desktop = get_desktop_path()
             filename = desktop / generate_export_filename(prefix='planning_par_voyage', extension='xlsx')
-            success, message = export_treeview_to_excel(tree, filename, sheet_name='Planning', title=f'Planning par Voyage - {format_date_display(self.current_date)}')
+            success, message = export_planning_excel_par_voyage(self.missions, self.voyages, self.current_date, filename)
             if success:
-                messagebox.showinfo('Export réussi', message)
+                messagebox.showinfo('Export réussi', f"Fichier exporté sur le bureau et ouvert:\n{filename.name}")
             else:
                 messagebox.showerror('Erreur export', message)
-        
+
         def export_pdf_par_voyage():
             desktop = get_desktop_path()
             filename = desktop / generate_export_filename(prefix='planning_par_voyage', extension='pdf')
-            success, message = export_treeview_to_pdf(tree, filename, title='Planning par Voyage', date_str=format_date_display(self.current_date))
+            success, message = export_planning_pdf_par_voyage(self.missions, self.voyages, self.current_date, filename)
             if success:
-                messagebox.showinfo('Export réussi', message)
+                messagebox.showinfo('Export réussi', f"Fichier exporté sur le bureau et ouvert:\n{filename.name}")
             else:
                 messagebox.showerror('Erreur export', message)
         
