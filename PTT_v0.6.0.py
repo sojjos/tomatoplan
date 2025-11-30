@@ -4346,6 +4346,13 @@ class TransportPlannerApp:
         if not voy:
             messagebox.showerror("Erreur", "Code voyage obligatoire.")
             return
+
+        # Vérifier que le voyage existe dans la base de données
+        voyage_exists = any(v.get("code") == voy for v in self.voyages)
+        if not voyage_exists:
+            messagebox.showerror("Erreur", f"Le voyage '{voy}' n'existe pas dans la base de données.\n\nVeuillez d'abord l'ajouter dans l'onglet Référentiels > Voyages.")
+            return
+
         try:
             nb_pal = int(self.form_nb_pal.get() or 0)
         except Exception:
@@ -4375,13 +4382,24 @@ class TransportPlannerApp:
             except Exception:
                 numero = 1
 
+        # Vérifier que le SST existe dans la base de données
+        sst = self.form_sst.get()
+        if sst and sst not in self.sst_list:
+            messagebox.showerror("Erreur", f"Le sous-traitant '{sst}' n'existe pas dans la base de données.\n\nVeuillez d'abord l'ajouter dans l'onglet Référentiels > Chauffeurs.")
+            return
+
+        # Vérifier que le chauffeur existe dans la base de données
         chauffeur_nom = self.form_chauffeur.get()
         chauffeur_id = None
-        for ch in self.chauffeurs:
-            if ch.get("nom_affichage") == chauffeur_nom:
-                chauffeur_id = ch["id"]
-                break
-        
+        if chauffeur_nom:
+            for ch in self.chauffeurs:
+                if ch.get("nom_affichage") == chauffeur_nom:
+                    chauffeur_id = ch["id"]
+                    break
+            if chauffeur_id is None:
+                messagebox.showerror("Erreur", f"Le chauffeur '{chauffeur_nom}' n'existe pas dans la base de données.\n\nVeuillez d'abord l'ajouter dans l'onglet Référentiels > Chauffeurs.")
+                return
+
         mission = self.form_existing.copy() if (self.form_mode == "edit" and self.form_existing) else {}
         mission.update(
             {
@@ -4392,7 +4410,7 @@ class TransportPlannerApp:
                 "voyage": voy,
                 "nb_pal": nb_pal,
                 "numero": numero,
-                "sst": self.form_sst.get(),
+                "sst": sst,
                 "chauffeur_nom": chauffeur_nom,
                 "chauffeur_id": chauffeur_id,
                 "ramasse": ram,
