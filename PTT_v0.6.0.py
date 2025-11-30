@@ -641,6 +641,310 @@ def load_local_settings() -> dict:
 def save_local_settings(data: dict) -> None:
     _settings_path().write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
+# =============================================================================
+# SYSTÈME DE CACHE LOCAL - Pré-téléchargement des plannings
+# =============================================================================
+
+import threading
+import shutil
+import time as time_module
+
+class PlanningCache:
+    """
+    Système de cache local pour les plannings.
+    Pré-télécharge les plannings des dates proches en arrière-plan
+    pour éliminer la latence lors du changement de date.
+    """
+
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self):
+        if self._initialized:
+            return
+        self._initialized = True
+
+        # Dossier de cache dans AppData
+        base = os.getenv("LOCALAPPDATA") or os.getenv("APPDATA") or str(Path.home())
+        self.cache_dir = Path(base) / APP_NAME / "cache" / "planning"
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+        # Fichier de métadonnées du cache
+        self.meta_file = self.cache_dir / "_cache_meta.json"
+        self.cache_meta = self._load_meta()
+
+        # Configuration du cache
+        self.days_before = 2   # Jours avant aujourd'hui à mettre en cache
+        self.days_after = 5    # Jours après aujourd'hui à mettre en cache
+        self.refresh_interval = 30  # Intervalle de rafraîchissement en secondes
+
+        # État du thread de fond
+        self._stop_event = threading.Event()
+        self._cache_thread = None
+        self._lock = threading.Lock()
+
+        # File d'attente pour les dates prioritaires
+        self._priority_dates = []
+
+        # Callback pour notifier l'UI
+        self._on_cache_updated = None
+
+    def _load_meta(self) -> dict:
+        """Charger les métadonnées du cache"""
+        try:
+            if self.meta_file.exists():
+                with open(self.meta_file, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception as e:
+            print(f"[Cache] Erreur chargement métadonnées: {e}")
+        return {"dates": {}, "last_full_refresh": None}
+
+    def _save_meta(self):
+        """Sauvegarder les métadonnées du cache"""
+        try:
+            with open(self.meta_file, "w", encoding="utf-8") as f:
+                json.dump(self.cache_meta, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"[Cache] Erreur sauvegarde métadonnées: {e}")
+
+    def _get_cache_path(self, d: date) -> Path:
+        """Obtenir le chemin du cache pour une date"""
+        return self.cache_dir / d.strftime("%Y-%m-%d")
+
+    def _get_source_path(self, d: date) -> Path:
+        """Obtenir le chemin source (OneDrive) pour une date"""
+        return get_planning_day_dir(d)
+
+    def _cache_date(self, d: date) -> bool:
+        """
+        Mettre en cache une date spécifique.
+        Retourne True si le cache a été mis à jour.
+        """
+        source_dir = self._get_source_path(d)
+        cache_path = self._get_cache_path(d)
+        date_str = d.strftime("%Y-%m-%d")
+
+        try:
+            # Vérifier si le dossier source existe
+            if not source_dir.exists():
+                # Pas de planning pour cette date - supprimer le cache si existant
+                if cache_path.exists():
+                    shutil.rmtree(cache_path)
+                    with self._lock:
+                        if date_str in self.cache_meta["dates"]:
+                            del self.cache_meta["dates"][date_str]
+                            self._save_meta()
+                return False
+
+            # Calculer le timestamp le plus récent des fichiers source
+            source_files = list(source_dir.glob("*.json"))
+            if not source_files:
+                return False
+
+            latest_source_mtime = max(f.stat().st_mtime for f in source_files)
+
+            # Vérifier si le cache est à jour
+            with self._lock:
+                cached_info = self.cache_meta["dates"].get(date_str, {})
+                cached_mtime = cached_info.get("source_mtime", 0)
+
+                if cache_path.exists() and cached_mtime >= latest_source_mtime:
+                    # Cache déjà à jour
+                    return False
+
+            # Créer/mettre à jour le cache
+            cache_path.mkdir(parents=True, exist_ok=True)
+
+            # Copier tous les fichiers JSON
+            for src_file in source_files:
+                dst_file = cache_path / src_file.name
+                shutil.copy2(src_file, dst_file)
+
+            # Mettre à jour les métadonnées
+            with self._lock:
+                self.cache_meta["dates"][date_str] = {
+                    "source_mtime": latest_source_mtime,
+                    "cached_at": datetime.now().isoformat(),
+                    "file_count": len(source_files)
+                }
+                self._save_meta()
+
+            print(f"[Cache] Date {date_str} mise en cache ({len(source_files)} fichiers)")
+            return True
+
+        except Exception as e:
+            print(f"[Cache] Erreur mise en cache {date_str}: {e}")
+            return False
+
+    def get_cached_planning(self, d: date) -> list:
+        """
+        Récupérer le planning depuis le cache.
+        Retourne None si pas en cache, sinon la liste des missions.
+        """
+        cache_path = self._get_cache_path(d)
+        date_str = d.strftime("%Y-%m-%d")
+
+        with self._lock:
+            if date_str not in self.cache_meta["dates"]:
+                return None
+            if not cache_path.exists():
+                return None
+
+        try:
+            missions = []
+            for file in cache_path.glob("*.json"):
+                data = load_json(file, None)
+                if data:
+                    # Stocker le chemin original (pas le cache)
+                    source_path = self._get_source_path(d) / file.name
+                    data["_path"] = source_path.as_posix()
+                    missions.append(data)
+            return missions
+        except Exception as e:
+            print(f"[Cache] Erreur lecture cache {date_str}: {e}")
+            return None
+
+    def is_cached(self, d: date) -> bool:
+        """Vérifier si une date est en cache"""
+        date_str = d.strftime("%Y-%m-%d")
+        with self._lock:
+            return date_str in self.cache_meta["dates"]
+
+    def prioritize_date(self, d: date):
+        """Ajouter une date à la liste prioritaire pour mise en cache immédiate"""
+        with self._lock:
+            if d not in self._priority_dates:
+                self._priority_dates.insert(0, d)
+
+    def _get_dates_to_cache(self) -> list:
+        """Obtenir la liste des dates à mettre en cache"""
+        today = date.today()
+        dates = []
+
+        # D'abord les dates prioritaires
+        with self._lock:
+            priority = self._priority_dates.copy()
+            self._priority_dates.clear()
+        dates.extend(priority)
+
+        # Puis les dates autour d'aujourd'hui
+        for delta in range(-self.days_before, self.days_after + 1):
+            d = today + timedelta(days=delta)
+            if d not in dates:
+                dates.append(d)
+
+        return dates
+
+    def _background_cache_loop(self):
+        """Boucle de fond pour mettre en cache les plannings"""
+        print("[Cache] Thread de cache démarré")
+
+        while not self._stop_event.is_set():
+            try:
+                dates_to_cache = self._get_dates_to_cache()
+                updated = False
+
+                for d in dates_to_cache:
+                    if self._stop_event.is_set():
+                        break
+
+                    if self._cache_date(d):
+                        updated = True
+                        # Petite pause entre chaque date pour ne pas surcharger
+                        time_module.sleep(0.5)
+
+                # Notifier l'UI si du nouveau contenu est disponible
+                if updated and self._on_cache_updated:
+                    try:
+                        self._on_cache_updated()
+                    except Exception:
+                        pass
+
+            except Exception as e:
+                print(f"[Cache] Erreur boucle cache: {e}")
+
+            # Attendre avant le prochain cycle
+            self._stop_event.wait(self.refresh_interval)
+
+        print("[Cache] Thread de cache arrêté")
+
+    def start(self, on_cache_updated=None):
+        """Démarrer le système de cache en arrière-plan"""
+        if self._cache_thread is not None and self._cache_thread.is_alive():
+            return
+
+        self._on_cache_updated = on_cache_updated
+        self._stop_event.clear()
+        self._cache_thread = threading.Thread(target=self._background_cache_loop, daemon=True)
+        self._cache_thread.start()
+        print("[Cache] Système de cache démarré")
+
+    def stop(self):
+        """Arrêter le système de cache"""
+        self._stop_event.set()
+        if self._cache_thread is not None:
+            self._cache_thread.join(timeout=2)
+        print("[Cache] Système de cache arrêté")
+
+    def force_refresh(self, d: date = None):
+        """Forcer le rafraîchissement du cache pour une date (ou toutes)"""
+        if d:
+            date_str = d.strftime("%Y-%m-%d")
+            with self._lock:
+                if date_str in self.cache_meta["dates"]:
+                    del self.cache_meta["dates"][date_str]
+                    self._save_meta()
+            self.prioritize_date(d)
+        else:
+            # Vider tout le cache
+            with self._lock:
+                self.cache_meta["dates"] = {}
+                self._save_meta()
+
+    def get_cache_status(self) -> dict:
+        """Obtenir le statut du cache pour l'affichage"""
+        with self._lock:
+            return {
+                "cached_dates": len(self.cache_meta["dates"]),
+                "dates": list(self.cache_meta["dates"].keys()),
+                "cache_dir": str(self.cache_dir),
+                "running": self._cache_thread is not None and self._cache_thread.is_alive()
+            }
+
+    def clear_old_cache(self, max_age_days: int = 30):
+        """Nettoyer les entrées de cache anciennes"""
+        cutoff = datetime.now() - timedelta(days=max_age_days)
+
+        with self._lock:
+            dates_to_remove = []
+            for date_str, info in self.cache_meta["dates"].items():
+                try:
+                    cached_at = datetime.fromisoformat(info.get("cached_at", ""))
+                    if cached_at < cutoff:
+                        dates_to_remove.append(date_str)
+                except Exception:
+                    pass
+
+            for date_str in dates_to_remove:
+                cache_path = self.cache_dir / date_str
+                if cache_path.exists():
+                    shutil.rmtree(cache_path)
+                del self.cache_meta["dates"][date_str]
+
+            if dates_to_remove:
+                self._save_meta()
+                print(f"[Cache] Nettoyé {len(dates_to_remove)} dates anciennes")
+
+
+# Instance globale du cache
+planning_cache = PlanningCache()
+
+
 class _AutoRefresher:
     def __init__(self, root: tk.Misc, refresh_callable):
         self.root = root
@@ -742,6 +1046,39 @@ def install_setup_menu(root: tk.Tk, menubar: tk.Menu, refresh_callable):
         win.transient(root); win.grab_set(); root.wait_window(win)
 
     setup_menu.add_command(label="Paramètres…", command=open_params_window)
+
+    # Menu Cache
+    setup_menu.add_separator()
+    cache_menu = tk.Menu(setup_menu, tearoff=0)
+    setup_menu.add_cascade(label="Cache local", menu=cache_menu)
+
+    def show_cache_status():
+        status = planning_cache.get_cache_status()
+        dates_str = "\n".join(sorted(status["dates"])[-10:]) if status["dates"] else "(vide)"
+        if len(status["dates"]) > 10:
+            dates_str = f"... et {len(status['dates']) - 10} autres\n" + dates_str
+
+        messagebox.showinfo(
+            "Statut du cache",
+            f"Dates en cache : {status['cached_dates']}\n"
+            f"Thread actif : {'Oui' if status['running'] else 'Non'}\n"
+            f"Dossier : {status['cache_dir']}\n\n"
+            f"Dernières dates :\n{dates_str}"
+        )
+
+    def clear_cache():
+        if messagebox.askyesno("Vider le cache", "Voulez-vous vraiment vider tout le cache local ?"):
+            planning_cache.force_refresh()
+            messagebox.showinfo("Cache vidé", "Le cache a été vidé. Il sera recréé automatiquement.")
+
+    def force_cache_refresh():
+        planning_cache.force_refresh()
+        messagebox.showinfo("Rafraîchissement", "Le cache va être reconstruit en arrière-plan.")
+
+    cache_menu.add_command(label="Voir le statut du cache", command=show_cache_status)
+    cache_menu.add_command(label="Forcer la mise à jour du cache", command=force_cache_refresh)
+    cache_menu.add_command(label="Vider le cache", command=clear_cache)
+
     return refresher
 
 # ---------- Fonctions d'export ----------
@@ -2432,15 +2769,33 @@ class TransportPlannerApp:
 
 
         self.build_gui()
+
+        # Démarrer le système de cache en arrière-plan
+        # Le cache pré-télécharge les plannings des dates proches
+        planning_cache.start(on_cache_updated=self._on_cache_updated)
+        # Nettoyer les anciennes entrées de cache
+        planning_cache.clear_old_cache(max_age_days=30)
+
         self.load_planning_for_date(self.current_date)
         self._start_auto_refresh_loop()
         self.update_status_bar_initial()
-        
+
         # Log du changement d'onglet
         self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
 
+    def _on_cache_updated(self):
+        """Callback appelé quand le cache a été mis à jour en arrière-plan"""
+        # On peut éventuellement rafraîchir l'UI si la date courante a été mise en cache
+        # Pour l'instant, on ne fait rien car l'UI se met à jour automatiquement
+        pass
+
     def _on_app_close(self):
         """Gérer la fermeture de l'application"""
+        try:
+            # Arrêter le système de cache
+            planning_cache.stop()
+        except Exception as e:
+            print(f"Erreur arrêt cache: {e}")
         try:
             activity_logger.log_session_end()
         except Exception as e:
@@ -4056,7 +4411,10 @@ class TransportPlannerApp:
 
         save_json(path, {k: v for k, v in mission.items() if k != "_path"})
         mission["_path"] = path.as_posix()
-        
+
+        # Invalider le cache pour cette date (le fichier a été modifié)
+        planning_cache.force_refresh(self.current_date)
+
         # Logger l'action Sauron
         if self.form_mode == "edit":
             before_state = {k: v for k, v in self.form_existing.items() if k != "_path"} if self.form_existing else {}
@@ -4135,14 +4493,49 @@ class TransportPlannerApp:
             return None
         return day_dir
 
-    def load_planning_for_date(self, d: date, preserve_ui=False):
+    def load_planning_for_date(self, d: date, preserve_ui=False, force_source=False):
+        """
+        Charger le planning pour une date donnée.
+
+        Args:
+            d: Date à charger
+            preserve_ui: Préserver l'état de l'UI lors du rafraîchissement
+            force_source: Forcer le chargement depuis la source (ignorer le cache)
+        """
+        # Prioritiser les dates adjacentes pour le pré-téléchargement
+        planning_cache.prioritize_date(d + timedelta(days=1))
+        planning_cache.prioritize_date(d - timedelta(days=1))
+
+        # 1. Essayer d'abord le cache local (rapide)
+        if not force_source:
+            cached_missions = planning_cache.get_cached_planning(d)
+            if cached_missions is not None:
+                print(f"[Cache] Planning {d} chargé depuis le cache ({len(cached_missions)} missions)")
+                self.missions = cached_missions
+                # Compléter les chauffeur_id manquants
+                for data in self.missions:
+                    if "chauffeur_nom" in data and "chauffeur_id" not in data:
+                        chauffeur_nom = data["chauffeur_nom"]
+                        for ch in self.chauffeurs:
+                            if ch.get("nom_affichage") == chauffeur_nom:
+                                data["chauffeur_id"] = ch["id"]
+                                break
+                self.refresh_planning_view(preserve_ui=preserve_ui)
+                if hasattr(self, "existing_dates_combo"):
+                    self.existing_dates_combo["values"] = list_existing_dates()
+                self._update_views_after_planning_load()
+                return
+
+        # 2. Charger depuis la source (OneDrive)
         day_dir = self.ensure_day_dir(d)
         if day_dir is None:
-            messagebox.showinfo(
-                "Planning inexistant",
-                f"Le planning pour le {format_date_display(d)} n'existe pas encore.\n\n"
-                "Contactez votre responsable pour générer ce planning."
-            )
+            # Vérifier si c'est vraiment inexistant ou juste pas en cache
+            if not planning_cache.is_cached(d):
+                messagebox.showinfo(
+                    "Planning inexistant",
+                    f"Le planning pour le {format_date_display(d)} n'existe pas encore.\n\n"
+                    "Contactez votre responsable pour générer ce planning."
+                )
             self.missions = []
             self.refresh_planning_view(preserve_ui=preserve_ui)
         else:
@@ -4166,7 +4559,10 @@ class TransportPlannerApp:
             if hasattr(self, "existing_dates_combo"):
                 self.existing_dates_combo["values"] = list_existing_dates()
 
-        # Mettre à jour aussi les vues liées aux chauffeurs (disponibilités, utilisés, calendrier)
+        self._update_views_after_planning_load()
+
+    def _update_views_after_planning_load(self):
+        """Mettre à jour les vues liées aux chauffeurs après rechargement du planning"""
         try:
             if hasattr(self, 'drivers_used_frame'):
                 self.refresh_drivers_used_view()
@@ -4677,6 +5073,10 @@ class TransportPlannerApp:
         if path and os.path.exists(path):
             os.remove(path)
         self.missions = [m for m in self.missions if m["id"] != mid]
+
+        # Invalider le cache pour cette date (le fichier a été supprimé)
+        planning_cache.force_refresh(self.current_date)
+
         self.refresh_planning_view()
 
     def build_chauffeurs_tab(self):
