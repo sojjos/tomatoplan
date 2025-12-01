@@ -3993,10 +3993,8 @@ class TransportPlannerApp:
 
         self.canvas.bind('<Configure>', on_canvas_configure)
 
-        # PanedWindow vertical pour les sections pays - chaque pays garde sa taille indépendamment
-        # L'utilisateur peut scroller pour voir les autres pays
         self.planning_container = ttk.PanedWindow(self.scrollable_frame, orient=tk.VERTICAL)
-        self.planning_container.pack(fill="both", expand=True)
+        self.planning_container.pack(fill="x", expand=False)
 
         # Mettre à jour le scroll region quand le sash est déplacé
         def on_sash_move(event=None):
@@ -4777,10 +4775,10 @@ class TransportPlannerApp:
         style.configure(f"{style_name}.Label", background=bg_color, font=('Arial', 11, 'bold'))
         
         flag_emoji = self.get_country_flag(country)
-        country_frame = ttk.LabelFrame(self.planning_container,
+        country_frame = ttk.LabelFrame(self.planning_container, 
                                        text=f"  {flag_emoji}  PLANNING {country.upper()}  ",
                                        style=style_name, padding=15)
-        self.planning_container.add(country_frame, weight=0, minsize=400)
+        self.planning_container.add(country_frame, weight=0)
 
         inner_frame = tk.Frame(country_frame, bg=bg_color, highlightbackground="#DDD", 
                                highlightthickness=1, relief="flat")
