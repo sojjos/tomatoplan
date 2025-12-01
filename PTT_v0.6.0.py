@@ -3974,23 +3974,34 @@ class TransportPlannerApp:
 
         self.canvas.grid(row=0, column=0, sticky="nsew")
         self.scrollbar.grid(row=0, column=1, sticky="ns")
-        
+
+        # Scroll avec la molette de souris
+        def on_mousewheel_planning(event):
+            self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        self.canvas.bind("<MouseWheel>", on_mousewheel_planning)
+        self.scrollable_frame.bind("<MouseWheel>", on_mousewheel_planning)
+
         def on_canvas_configure(event):
             try:
                 canvas_width = event.width
-                canvas_height = event.height
                 canvas_items = self.canvas.find_withtag("all")
                 if canvas_items:
                     self.canvas.itemconfig(canvas_items[0], width=canvas_width)
-                if hasattr(self, 'planning_container'):
-                    self.planning_container.configure(height=max(canvas_height, 600))
             except (IndexError, tk.TclError):
                 pass
-        
+
         self.canvas.bind('<Configure>', on_canvas_configure)
 
-        self.planning_container = ttk.PanedWindow(self.scrollable_frame, orient=tk.VERTICAL, height=800)
-        self.planning_container.pack(fill="both", expand=True)
+        self.planning_container = ttk.PanedWindow(self.scrollable_frame, orient=tk.VERTICAL)
+        self.planning_container.pack(fill="x", expand=False)
+
+        # Mettre à jour le scroll region quand le sash est déplacé
+        def on_sash_move(event=None):
+            self.scrollable_frame.update_idletasks()
+            self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+        self.planning_container.bind('<ButtonRelease-1>', on_sash_move)
         
         right_main_container = ttk.Frame(main_container)
         main_container.add(right_main_container, weight=1)
@@ -4767,7 +4778,7 @@ class TransportPlannerApp:
         country_frame = ttk.LabelFrame(self.planning_container, 
                                        text=f"  {flag_emoji}  PLANNING {country.upper()}  ",
                                        style=style_name, padding=15)
-        self.planning_container.add(country_frame, weight=1)
+        self.planning_container.add(country_frame, weight=0)
 
         inner_frame = tk.Frame(country_frame, bg=bg_color, highlightbackground="#DDD", 
                                highlightthickness=1, relief="flat")
