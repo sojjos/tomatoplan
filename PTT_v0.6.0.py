@@ -3993,6 +3993,8 @@ class TransportPlannerApp:
 
         self.canvas.bind('<Configure>', on_canvas_configure)
 
+        # PanedWindow vertical pour les sections pays - chaque pays garde sa taille indépendamment
+        # L'utilisateur peut scroller pour voir les autres pays
         self.planning_container = ttk.PanedWindow(self.scrollable_frame, orient=tk.VERTICAL)
         self.planning_container.pack(fill="both", expand=True)
 
