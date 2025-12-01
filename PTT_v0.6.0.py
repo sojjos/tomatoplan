@@ -4781,13 +4781,12 @@ class TransportPlannerApp:
         country_frame.pack(fill="x", expand=False, pady=5)
         country_frame.pack_propagate(False)
 
-        inner_frame = tk.Frame(country_frame, bg=bg_color, highlightbackground="#DDD",
-                               highlightthickness=1, relief="flat")
-        inner_frame.pack(fill="both", expand=True, padx=5, pady=(5, 0))
+        # Poignée de redimensionnement en bas de la section (pack en premier avec side=bottom)
+        resize_handle = tk.Frame(country_frame, bg="#999999", height=12, cursor="sb_v_double_arrow", relief="raised", bd=1)
+        resize_handle.pack(fill="x", side="bottom", padx=5, pady=2)
 
-        # Poignée de redimensionnement en bas de la section
-        resize_handle = tk.Frame(country_frame, bg="#CCCCCC", height=8, cursor="sb_v_double_arrow")
-        resize_handle.pack(fill="x", side="bottom", padx=5, pady=(0, 2))
+        resize_label = tk.Label(resize_handle, text="≡ ≡ ≡", bg="#999999", fg="white", font=('Arial', 8), cursor="sb_v_double_arrow")
+        resize_label.pack(expand=True)
 
         def start_resize(event):
             resize_handle._drag_start_y = event.y_root
@@ -4802,6 +4801,12 @@ class TransportPlannerApp:
 
         resize_handle.bind("<Button-1>", start_resize)
         resize_handle.bind("<B1-Motion>", do_resize)
+        resize_label.bind("<Button-1>", start_resize)
+        resize_label.bind("<B1-Motion>", do_resize)
+
+        inner_frame = tk.Frame(country_frame, bg=bg_color, highlightbackground="#DDD",
+                               highlightthickness=1, relief="flat")
+        inner_frame.pack(fill="both", expand=True, padx=5, pady=5)
         
         inner_frame.rowconfigure(0, weight=1)
         inner_frame.columnconfigure(0, weight=1)
