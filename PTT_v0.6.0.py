@@ -784,16 +784,54 @@ class PlanningCache:
     def get_cached_planning(self, d: date) -> list:
         """
         Récupérer le planning depuis le cache.
-        Retourne None si pas en cache, sinon la liste des missions.
+        Retourne None si pas en cache ou si les fichiers source ont changé.
+        Vérifie TOUJOURS les timestamps source pour détecter les modifications
+        faites par d'autres utilisateurs.
         """
         cache_path = self._get_cache_path(d)
         date_str = d.strftime("%Y-%m-%d")
+        source_dir = self._get_source_path(d)
 
         with self._lock:
             if date_str not in self.cache_meta["dates"]:
                 return None
             if not cache_path.exists():
                 return None
+            cached_info = self.cache_meta["dates"].get(date_str, {})
+            cached_mtime = cached_info.get("source_mtime", 0)
+
+        # IMPORTANT: Vérifier si les fichiers source ont changé
+        # (détecte les modifications faites par d'autres utilisateurs)
+        try:
+            if source_dir.exists():
+                source_files = list(source_dir.glob("*.json"))
+                if source_files:
+                    latest_source_mtime = max(f.stat().st_mtime for f in source_files)
+                    # Si les fichiers source ont été modifiés depuis la mise en cache
+                    if latest_source_mtime > cached_mtime:
+                        print(f"[Cache] Fichiers source modifiés pour {date_str}, invalidation du cache")
+                        # Invalider le cache et forcer la mise à jour
+                        with self._lock:
+                            if date_str in self.cache_meta["dates"]:
+                                del self.cache_meta["dates"][date_str]
+                                self._save_meta()
+                        self.prioritize_date(d)
+                        return None  # Forcer rechargement depuis source
+
+                    # Vérifier aussi si le nombre de fichiers a changé
+                    cached_file_count = cached_info.get("file_count", 0)
+                    if len(source_files) != cached_file_count:
+                        print(f"[Cache] Nombre de fichiers changé pour {date_str}, invalidation du cache")
+                        with self._lock:
+                            if date_str in self.cache_meta["dates"]:
+                                del self.cache_meta["dates"][date_str]
+                                self._save_meta()
+                        self.prioritize_date(d)
+                        return None
+        except Exception as e:
+            print(f"[Cache] Erreur vérification source {date_str}: {e}")
+            # En cas d'erreur, on utilise quand même le cache
+            pass
 
         try:
             missions = []
