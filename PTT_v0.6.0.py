@@ -3994,7 +3994,7 @@ class TransportPlannerApp:
         self.canvas.bind('<Configure>', on_canvas_configure)
 
         self.planning_container = ttk.PanedWindow(self.scrollable_frame, orient=tk.VERTICAL)
-        self.planning_container.pack(fill="x", expand=False)
+        self.planning_container.pack(fill="both", expand=True)
 
         # Mettre à jour le scroll region quand le sash est déplacé
         def on_sash_move(event=None):
