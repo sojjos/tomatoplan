@@ -4781,9 +4781,27 @@ class TransportPlannerApp:
         country_frame.pack(fill="x", expand=False, pady=5)
         country_frame.pack_propagate(False)
 
-        inner_frame = tk.Frame(country_frame, bg=bg_color, highlightbackground="#DDD", 
+        inner_frame = tk.Frame(country_frame, bg=bg_color, highlightbackground="#DDD",
                                highlightthickness=1, relief="flat")
-        inner_frame.pack(fill="both", expand=True, padx=5, pady=5)
+        inner_frame.pack(fill="both", expand=True, padx=5, pady=(5, 0))
+
+        # Poignée de redimensionnement en bas de la section
+        resize_handle = tk.Frame(country_frame, bg="#CCCCCC", height=8, cursor="sb_v_double_arrow")
+        resize_handle.pack(fill="x", side="bottom", padx=5, pady=(0, 2))
+
+        def start_resize(event):
+            resize_handle._drag_start_y = event.y_root
+            resize_handle._start_height = country_frame.winfo_height()
+
+        def do_resize(event):
+            delta = event.y_root - resize_handle._drag_start_y
+            new_height = max(200, resize_handle._start_height + delta)
+            country_frame.configure(height=new_height)
+            self.scrollable_frame.update_idletasks()
+            self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+        resize_handle.bind("<Button-1>", start_resize)
+        resize_handle.bind("<B1-Motion>", do_resize)
         
         inner_frame.rowconfigure(0, weight=1)
         inner_frame.columnconfigure(0, weight=1)
