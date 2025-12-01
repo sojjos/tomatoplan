@@ -3993,7 +3993,7 @@ class TransportPlannerApp:
 
         self.canvas.bind('<Configure>', on_canvas_configure)
 
-        self.planning_container = ttk.PanedWindow(self.scrollable_frame, orient=tk.VERTICAL)
+        self.planning_container = ttk.Frame(self.scrollable_frame)
         self.planning_container.pack(fill="both", expand=True)
 
         # Mettre à jour le scroll region quand le sash est déplacé
@@ -4775,10 +4775,11 @@ class TransportPlannerApp:
         style.configure(f"{style_name}.Label", background=bg_color, font=('Arial', 11, 'bold'))
         
         flag_emoji = self.get_country_flag(country)
-        country_frame = ttk.LabelFrame(self.planning_container, 
+        country_frame = ttk.LabelFrame(self.planning_container,
                                        text=f"  {flag_emoji}  PLANNING {country.upper()}  ",
-                                       style=style_name, padding=15)
-        self.planning_container.add(country_frame, weight=0)
+                                       style=style_name, padding=15, height=450)
+        country_frame.pack(fill="x", expand=False, pady=5)
+        country_frame.pack_propagate(False)
 
         inner_frame = tk.Frame(country_frame, bg=bg_color, highlightbackground="#DDD", 
                                highlightthickness=1, relief="flat")
