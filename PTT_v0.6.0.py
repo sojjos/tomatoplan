@@ -3886,6 +3886,12 @@ class TransportPlannerApp:
         self.summary_pays_label = ttk.Label(stats_container, text="0", font=('Arial', 10, 'bold'), foreground='#607D8B')
         self.summary_pays_label.pack(side='left')
 
+        ttk.Separator(stats_container, orient='vertical').pack(side='left', fill='y', padx=5)
+
+        # Label pour les voyages incomplets (rouge)
+        self.summary_incomplete_label = ttk.Label(stats_container, text="", font=('Arial', 9, 'bold'), foreground='#D32F2F')
+        self.summary_incomplete_label.pack(side='left', padx=5)
+
         controls_container = ttk.Frame(self.tab_planning)
         controls_container.pack(fill="x", padx=5, pady=2)
         
@@ -4747,6 +4753,19 @@ class TransportPlannerApp:
         self.summary_pal_label.config(text=pal_text)
         self.summary_pays_label.config(text=str(nb_pays))
 
+        # Compter les voyages incomplets (sans SST ou sans chauffeur)
+        nb_incomplete = sum(1 for m in self.missions
+                          if m.get("sans_sst", False) or m.get("sans_chauffeur", False))
+
+        if nb_incomplete > 0:
+            if nb_incomplete == 1:
+                incomplete_text = f"⚠️ Attention: {nb_incomplete} voyage pas complet"
+            else:
+                incomplete_text = f"⚠️ Attention: {nb_incomplete} voyages pas complets"
+            self.summary_incomplete_label.config(text=incomplete_text)
+        else:
+            self.summary_incomplete_label.config(text="")
+
     def sort_missions(self, criteria):
         if self.sort_criteria == criteria:
             self.sort_reverse = not self.sort_reverse
@@ -4860,6 +4879,7 @@ class TransportPlannerApp:
         
         tree_liv.tag_configure('oddrow', background='white')
         tree_liv.tag_configure('evenrow', background='#F0F0F0')
+        tree_liv.tag_configure('incomplete', background='#FFCDD2', foreground='#B71C1C')  # Rouge clair pour voyages incomplets
 
         header_frame_r = tk.Frame(right_frame, bg="#4CAF50", height=35)
         header_frame_r.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 5))
@@ -4892,6 +4912,7 @@ class TransportPlannerApp:
         
         tree_ram.tag_configure('oddrow', background='white')
         tree_ram.tag_configure('evenrow', background='#F0F0F0')
+        tree_ram.tag_configure('incomplete', background='#FFCDD2', foreground='#B71C1C')  # Rouge clair pour voyages incomplets
 
         self.country_frames[country] = country_frame
         self.country_trees[country] = {"livraison": tree_liv, "ramasse": tree_ram}
@@ -5010,6 +5031,8 @@ class TransportPlannerApp:
         self.form_ramasse = tk.StringVar()
         self.form_infos = tk.StringVar()
         self.form_numero = tk.StringVar()
+        self.form_sans_sst = tk.BooleanVar(value=False)
+        self.form_sans_chauffeur = tk.BooleanVar(value=False)
 
         row = 0
         ttk.Label(self.plan_form_frame, text="Type :").grid(row=row, column=0, sticky="w", padx=5, pady=2)
@@ -5050,16 +5073,24 @@ class TransportPlannerApp:
         self.all_sst_values = self.sst_list.copy()
         self.form_sst_cb = ttk.Combobox(self.plan_form_frame, textvariable=self.form_sst,
                                         values=self.sst_list, width=15)
-        self.form_sst_cb.grid(row=row, column=1, columnspan=2, sticky="w")
+        self.form_sst_cb.grid(row=row, column=1, sticky="w")
         self.setup_combobox_autocomplete(self.form_sst_cb, 'all_sst_values', lambda: self.on_form_sst_changed())
+        self.form_sans_sst_cb = ttk.Checkbutton(self.plan_form_frame, text="Sans SST",
+                                                 variable=self.form_sans_sst,
+                                                 command=self.on_form_sans_sst_changed)
+        self.form_sans_sst_cb.grid(row=row, column=2, sticky="w", padx=5)
         row += 1
 
         ttk.Label(self.plan_form_frame, text="Chauffeur :").grid(row=row, column=0, sticky="w")
         self.all_chauffeur_values = [c.get("nom_affichage", c.get("nom", "")) for c in self.chauffeurs]
         self.form_ch_cb = ttk.Combobox(self.plan_form_frame, textvariable=self.form_chauffeur,
                                        values=self.all_chauffeur_values, width=20)
-        self.form_ch_cb.grid(row=row, column=1, columnspan=2, sticky="w")
+        self.form_ch_cb.grid(row=row, column=1, sticky="w")
         self.setup_combobox_autocomplete(self.form_ch_cb, 'all_chauffeur_values', self.on_form_chauffeur_changed)
+        self.form_sans_chauffeur_cb = ttk.Checkbutton(self.plan_form_frame, text="Sans Chauffeur",
+                                                       variable=self.form_sans_chauffeur,
+                                                       command=self.on_form_sans_chauffeur_changed)
+        self.form_sans_chauffeur_cb.grid(row=row, column=2, sticky="w", padx=5)
         row += 1
 
         ttk.Label(self.plan_form_frame, text="Numéro tournée :").grid(row=row, column=0, sticky="w")
@@ -5124,21 +5155,46 @@ class TransportPlannerApp:
             self.form_chauffeur.set("")
             self.form_infos.set("")
             self.form_numero.set("")
+            self.form_sans_sst.set(False)
+            self.form_sans_chauffeur.set(False)
+            # Réactiver les combobox
+            self.form_sst_cb.configure(state="normal")
+            self.form_ch_cb.configure(state="normal")
         else:
             self.form_type.set(existing.get("type", "LIVRAISON"))
             self.form_heure.set(existing.get("heure", TIME_CHOICES[0]))
             self.form_voyage.set(existing.get("voyage", ""))
             self.form_ramasse.set(existing.get("ramasse", ""))
             self.form_nb_pal.set(str(existing.get("nb_pal", 0)))
-            self.form_sst.set(existing.get("sst", self.sst_list[0] if self.sst_list else ""))
-            self.form_chauffeur.set(existing.get("chauffeur_nom", ""))
+
+            # Gérer les flags sans_sst et sans_chauffeur
+            sans_sst = existing.get("sans_sst", False)
+            sans_chauffeur = existing.get("sans_chauffeur", False)
+            self.form_sans_sst.set(sans_sst)
+            self.form_sans_chauffeur.set(sans_chauffeur)
+
+            if sans_sst:
+                self.form_sst.set("")
+                self.form_sst_cb.configure(state="disabled")
+            else:
+                self.form_sst.set(existing.get("sst", self.sst_list[0] if self.sst_list else ""))
+                self.form_sst_cb.configure(state="normal")
+
+            if sans_chauffeur:
+                self.form_chauffeur.set("")
+                self.form_ch_cb.configure(state="disabled")
+            else:
+                self.form_chauffeur.set(existing.get("chauffeur_nom", ""))
+                self.form_ch_cb.configure(state="normal")
+
             self.form_infos.set(existing.get("infos", ""))
             self.form_numero.set(str(existing.get("numero", "")))
 
         self.on_form_type_changed()
         self.on_form_voyage_changed()
-        self.on_form_sst_changed(update_numero=(mode == "add"))
-        if mode == "add":
+        if not self.form_sans_sst.get():
+            self.on_form_sst_changed(update_numero=(mode == "add"))
+        if mode == "add" and not self.form_sans_chauffeur.get():
             self.update_form_numero()
 
         self.plan_form_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
@@ -5180,6 +5236,30 @@ class TransportPlannerApp:
 
     def on_form_chauffeur_changed(self, event=None):
         self.update_form_numero()
+
+    def on_form_sans_sst_changed(self):
+        """Handler quand la case 'Sans SST' est cochée/décochée"""
+        if self.form_sans_sst.get():
+            self.form_sst.set("")
+            self.form_sst_cb.configure(state="disabled")
+            # Si Sans SST est coché, on coche aussi Sans Chauffeur automatiquement
+            self.form_sans_chauffeur.set(True)
+            self.on_form_sans_chauffeur_changed()
+        else:
+            self.form_sst_cb.configure(state="normal")
+            if self.sst_list:
+                self.form_sst.set(self.sst_list[0])
+            self.on_form_sst_changed()
+
+    def on_form_sans_chauffeur_changed(self):
+        """Handler quand la case 'Sans Chauffeur' est cochée/décochée"""
+        if self.form_sans_chauffeur.get():
+            self.form_chauffeur.set("")
+            self.form_ch_cb.configure(state="disabled")
+            self.form_numero.set("")
+        else:
+            self.form_ch_cb.configure(state="normal")
+            self.on_form_sst_changed(update_numero=True)
 
     def update_form_numero(self):
         if self.form_mode != "add":
@@ -5275,23 +5355,34 @@ class TransportPlannerApp:
             except Exception:
                 numero = 1
 
-        # Vérifier que le SST existe dans la base de données
-        sst = self.form_sst.get()
-        if sst and sst not in self.sst_list:
-            messagebox.showerror("Erreur", f"Le sous-traitant '{sst}' n'existe pas dans la base de données.\n\nVeuillez d'abord l'ajouter dans l'onglet Référentiels > Chauffeurs.")
-            return
+        # Récupérer l'état des cases "Sans SST" et "Sans Chauffeur"
+        sans_sst = self.form_sans_sst.get()
+        sans_chauffeur = self.form_sans_chauffeur.get()
 
-        # Vérifier que le chauffeur existe dans la base de données
+        # Vérifier que le SST existe dans la base de données (sauf si case cochée)
+        sst = self.form_sst.get()
+        if not sans_sst:
+            if sst and sst not in self.sst_list:
+                messagebox.showerror("Erreur", f"Le sous-traitant '{sst}' n'existe pas dans la base de données.\n\nVeuillez d'abord l'ajouter dans l'onglet Référentiels > Chauffeurs.")
+                return
+        else:
+            sst = ""  # Vider le SST si la case est cochée
+
+        # Vérifier que le chauffeur existe dans la base de données (sauf si case cochée)
         chauffeur_nom = self.form_chauffeur.get()
         chauffeur_id = None
-        if chauffeur_nom:
-            for ch in self.chauffeurs:
-                if ch.get("nom_affichage") == chauffeur_nom:
-                    chauffeur_id = ch["id"]
-                    break
-            if chauffeur_id is None:
-                messagebox.showerror("Erreur", f"Le chauffeur '{chauffeur_nom}' n'existe pas dans la base de données.\n\nVeuillez d'abord l'ajouter dans l'onglet Référentiels > Chauffeurs.")
-                return
+        if not sans_chauffeur:
+            if chauffeur_nom:
+                for ch in self.chauffeurs:
+                    if ch.get("nom_affichage") == chauffeur_nom:
+                        chauffeur_id = ch["id"]
+                        break
+                if chauffeur_id is None:
+                    messagebox.showerror("Erreur", f"Le chauffeur '{chauffeur_nom}' n'existe pas dans la base de données.\n\nVeuillez d'abord l'ajouter dans l'onglet Référentiels > Chauffeurs.")
+                    return
+        else:
+            chauffeur_nom = ""  # Vider le chauffeur si la case est cochée
+            chauffeur_id = None
 
         mission = self.form_existing.copy() if (self.form_mode == "edit" and self.form_existing) else {}
         mission.update(
@@ -5308,6 +5399,8 @@ class TransportPlannerApp:
                 "chauffeur_id": chauffeur_id,
                 "ramasse": ram,
                 "infos": self.form_infos.get(),
+                "sans_sst": sans_sst,
+                "sans_chauffeur": sans_chauffeur,
             }
         )
 
@@ -5547,17 +5640,27 @@ class TransportPlannerApp:
             
             row_num = 0
             for m in missions_by_country[country]:
+                # Afficher "N/A" si la mission est marquée sans SST ou sans chauffeur
+                sst_display = "N/A" if m.get("sans_sst", False) else m.get("sst", "")
+                chauffeur_display = "N/A" if m.get("sans_chauffeur", False) else m.get("chauffeur_nom", "")
+
                 values_common = (
                     m.get("heure", ""),
                     m.get("voyage", ""),
                     m.get("nb_pal", ""),
                     m.get("numero", ""),
-                    m.get("sst", ""),
-                    m.get("chauffeur_nom", ""),
+                    sst_display,
+                    chauffeur_display,
                     m.get("infos", ""),
                 )
-                tag = 'evenrow' if row_num % 2 == 0 else 'oddrow'
-                
+
+                # Déterminer le tag: incomplete si voyage incomplet, sinon alternance pair/impair
+                is_incomplete = m.get("sans_sst", False) or m.get("sans_chauffeur", False)
+                if is_incomplete:
+                    tag = 'incomplete'
+                else:
+                    tag = 'evenrow' if row_num % 2 == 0 else 'oddrow'
+
                 if m.get("type") == "LIVRAISON":
                     tree_liv.insert("", "end", iid=m["id"], values=values_common, tags=(tag,))
                 else:
