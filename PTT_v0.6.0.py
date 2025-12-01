@@ -4779,7 +4779,7 @@ class TransportPlannerApp:
         flag_emoji = self.get_country_flag(country)
         country_frame = ttk.LabelFrame(self.planning_container,
                                        text=f"  {flag_emoji}  PLANNING {country.upper()}  ",
-                                       style=style_name, padding=15, height=500)
+                                       style=style_name, padding=15)
         self.planning_container.add(country_frame, weight=0, minsize=400)
 
         inner_frame = tk.Frame(country_frame, bg=bg_color, highlightbackground="#DDD", 
