@@ -933,16 +933,32 @@ class PlanningCache:
         """Forcer le rafraîchissement du cache pour une date (ou toutes)"""
         if d:
             date_str = d.strftime("%Y-%m-%d")
+            cache_path = self._get_cache_path(d)
             with self._lock:
                 if date_str in self.cache_meta["dates"]:
                     del self.cache_meta["dates"][date_str]
                     self._save_meta()
+            # Supprimer aussi le dossier cache physique
+            if cache_path.exists():
+                try:
+                    shutil.rmtree(cache_path)
+                    print(f"[Cache] Dossier cache {date_str} supprimé")
+                except Exception as e:
+                    print(f"[Cache] Erreur suppression dossier {date_str}: {e}")
             self.prioritize_date(d)
         else:
             # Vider tout le cache
             with self._lock:
                 self.cache_meta["dates"] = {}
                 self._save_meta()
+            # Supprimer tous les dossiers cache
+            try:
+                for item in self.cache_dir.iterdir():
+                    if item.is_dir():
+                        shutil.rmtree(item)
+                print("[Cache] Tout le cache supprimé")
+            except Exception as e:
+                print(f"[Cache] Erreur suppression cache: {e}")
 
     def get_cache_status(self) -> dict:
         """Obtenir le statut du cache pour l'affichage"""
