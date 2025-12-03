@@ -4272,16 +4272,30 @@ class TransportPlannerApp:
         done_canvas.pack(side="left", padx=2)
         ttk.Label(legend_frame, text="Effectué", font=('Arial', 8)).pack(side="left")
 
-        # Container principal du Gantt
+        # Container principal du Gantt avec deux parties: noms fixes + timeline scrollable
         self.suivi_gantt_container = ttk.Frame(self.suivi_gantt_frame)
         self.suivi_gantt_container.pack(fill="both", expand=True)
 
-        # Canvas pour le Gantt
-        self.gantt_canvas = tk.Canvas(self.suivi_gantt_container, bg="white", highlightthickness=0)
-        self.gantt_h_scrollbar = ttk.Scrollbar(self.suivi_gantt_container, orient="horizontal",
+        # Frame pour la partie gauche (noms des chauffeurs - fixe)
+        self.gantt_names_frame = ttk.Frame(self.suivi_gantt_container, width=200)
+        self.gantt_names_frame.pack(side="left", fill="y")
+        self.gantt_names_frame.pack_propagate(False)
+
+        # Canvas pour les noms des chauffeurs (scroll vertical seulement)
+        self.gantt_names_canvas = tk.Canvas(self.gantt_names_frame, bg="white",
+                                            highlightthickness=0, width=200)
+        self.gantt_names_canvas.pack(fill="both", expand=True)
+
+        # Frame pour la partie droite (timeline - scrollable)
+        self.gantt_timeline_frame = ttk.Frame(self.suivi_gantt_container)
+        self.gantt_timeline_frame.pack(side="left", fill="both", expand=True)
+
+        # Canvas pour la timeline (scroll horizontal et vertical)
+        self.gantt_canvas = tk.Canvas(self.gantt_timeline_frame, bg="white", highlightthickness=0)
+        self.gantt_h_scrollbar = ttk.Scrollbar(self.gantt_timeline_frame, orient="horizontal",
                                                 command=self.gantt_canvas.xview)
-        self.gantt_v_scrollbar = ttk.Scrollbar(self.suivi_gantt_container, orient="vertical",
-                                                command=self.gantt_canvas.yview)
+        self.gantt_v_scrollbar = ttk.Scrollbar(self.gantt_timeline_frame, orient="vertical",
+                                                command=self._gantt_yview_both)
 
         self.gantt_canvas.configure(xscrollcommand=self.gantt_h_scrollbar.set,
                                     yscrollcommand=self.gantt_v_scrollbar.set)
@@ -4290,16 +4304,24 @@ class TransportPlannerApp:
         self.gantt_h_scrollbar.pack(side="bottom", fill="x")
         self.gantt_canvas.pack(side="left", fill="both", expand=True)
 
-        # Bind molette pour scroll horizontal
+        # Bind molette pour scroll
         def on_gantt_mousewheel(event):
-            # Shift + molette = scroll horizontal, sinon vertical
-            if event.state & 0x1:  # Shift key
-                self.gantt_canvas.xview_scroll(int(-1 * (event.delta / 120)), "units")
-            else:
-                # Molette normale = scroll horizontal dans le Gantt
-                self.gantt_canvas.xview_scroll(int(-1 * (event.delta / 120)), "units")
+            # Molette normale = scroll horizontal dans le Gantt
+            self.gantt_canvas.xview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        def on_gantt_mousewheel_vertical(event):
+            # Scroll vertical synchronisé
+            self._gantt_yview_both("scroll", int(-1 * (event.delta / 120)), "units")
 
         self.gantt_canvas.bind("<MouseWheel>", on_gantt_mousewheel)
+        self.gantt_names_canvas.bind("<MouseWheel>", on_gantt_mousewheel_vertical)
+        # Shift + molette = scroll vertical
+        self.gantt_canvas.bind("<Shift-MouseWheel>", on_gantt_mousewheel_vertical)
+
+    def _gantt_yview_both(self, *args):
+        """Synchroniser le scroll vertical entre les deux canvas du Gantt"""
+        self.gantt_canvas.yview(*args)
+        self.gantt_names_canvas.yview(*args)
 
     def _build_suivi_edit_form(self):
         """Construire le formulaire d'édition pour le suivi missions"""
@@ -4759,9 +4781,11 @@ class TransportPlannerApp:
         self.suivi_refresh_view()
 
     def suivi_draw_gantt(self):
-        """Dessiner le diagramme de Gantt"""
+        """Dessiner le diagramme de Gantt avec noms fixes à gauche"""
         canvas = self.gantt_canvas
+        names_canvas = self.gantt_names_canvas
         canvas.delete("all")
+        names_canvas.delete("all")
 
         if not self.suivi_missions:
             canvas.create_text(400, 200, text="Aucune mission pour cette date",
@@ -4771,8 +4795,8 @@ class TransportPlannerApp:
         # Configuration du Gantt
         DRIVER_HEIGHT = 40
         HOUR_WIDTH = 100
-        LEFT_MARGIN = 200  # Augmenté pour afficher SST
         TOP_MARGIN = 40    # Pour les heures
+        NAMES_WIDTH = 200  # Largeur de la colonne des noms
 
         # Collecter les chauffeurs uniques avec des missions ce jour
         # Format: {chauffeur_nom: {"missions": [...], "sst": "..."}}
@@ -4801,15 +4825,15 @@ class TransportPlannerApp:
             # Tri alphabétique
             drivers = sorted(drivers_with_missions.keys())
 
-        # Dessiner les en-têtes d'heures (0h à 28h pour couvrir les heures tardives)
-        for hour in range(0, 28):
-            x = LEFT_MARGIN + hour * HOUR_WIDTH
-            canvas.create_text(x + HOUR_WIDTH/2, 20, text=f"{hour:02d}:00",
-                             font=('Arial', 9))
-            canvas.create_line(x, TOP_MARGIN, x, TOP_MARGIN + len(drivers) * DRIVER_HEIGHT,
-                             fill='#E0E0E0', dash=(2, 2))
+        total_height = TOP_MARGIN + len(drivers) * DRIVER_HEIGHT + 20
 
-        # Dessiner les lignes des chauffeurs
+        # === CANVAS DES NOMS (gauche, fixe) ===
+        # En-tête "Chauffeur"
+        names_canvas.create_text(NAMES_WIDTH/2, 20, text="Chauffeur",
+                                font=('Arial', 9, 'bold'))
+        names_canvas.create_line(0, TOP_MARGIN, NAMES_WIDTH, TOP_MARGIN, fill='#CCCCCC')
+
+        # Dessiner les noms des chauffeurs
         for i, driver in enumerate(drivers):
             y = TOP_MARGIN + i * DRIVER_HEIGHT
             driver_info = drivers_with_missions[driver]
@@ -4817,29 +4841,51 @@ class TransportPlannerApp:
 
             # Fond alterné
             if i % 2 == 0:
-                canvas.create_rectangle(0, y, LEFT_MARGIN + 28 * HOUR_WIDTH, y + DRIVER_HEIGHT,
-                                       fill='#FAFAFA', outline='')
+                names_canvas.create_rectangle(0, y, NAMES_WIDTH, y + DRIVER_HEIGHT,
+                                             fill='#FAFAFA', outline='')
 
             # Nom du chauffeur avec SST
             display_text = driver
             if sst:
                 display_text = f"{driver} ({sst})"
-            canvas.create_text(10, y + DRIVER_HEIGHT/2, text=display_text,
-                             anchor='w', font=('Arial', 9, 'bold'))
+            names_canvas.create_text(10, y + DRIVER_HEIGHT/2, text=display_text,
+                                    anchor='w', font=('Arial', 9, 'bold'))
 
             # Ligne horizontale
-            canvas.create_line(LEFT_MARGIN, y + DRIVER_HEIGHT,
-                             LEFT_MARGIN + 28 * HOUR_WIDTH, y + DRIVER_HEIGHT,
+            names_canvas.create_line(0, y + DRIVER_HEIGHT, NAMES_WIDTH, y + DRIVER_HEIGHT,
+                                    fill='#E0E0E0')
+
+        # === CANVAS TIMELINE (droite, scrollable) ===
+        # Dessiner les en-têtes d'heures (0h à 28h pour couvrir les heures tardives)
+        for hour in range(0, 28):
+            x = hour * HOUR_WIDTH
+            canvas.create_text(x + HOUR_WIDTH/2, 20, text=f"{hour:02d}:00",
+                             font=('Arial', 9))
+            canvas.create_line(x, TOP_MARGIN, x, TOP_MARGIN + len(drivers) * DRIVER_HEIGHT,
+                             fill='#E0E0E0', dash=(2, 2))
+
+        # Dessiner les lignes des chauffeurs sur la timeline
+        for i, driver in enumerate(drivers):
+            y = TOP_MARGIN + i * DRIVER_HEIGHT
+            driver_info = drivers_with_missions[driver]
+
+            # Fond alterné
+            if i % 2 == 0:
+                canvas.create_rectangle(0, y, 28 * HOUR_WIDTH, y + DRIVER_HEIGHT,
+                                       fill='#FAFAFA', outline='')
+
+            # Ligne horizontale
+            canvas.create_line(0, y + DRIVER_HEIGHT, 28 * HOUR_WIDTH, y + DRIVER_HEIGHT,
                              fill='#E0E0E0')
 
-            # Dessiner les barres des missions
+            # Dessiner les barres des missions (sans LEFT_MARGIN maintenant)
             for m in driver_info["missions"]:
                 self.suivi_draw_gantt_bar(canvas, m, i, v_by_code,
-                                          HOUR_WIDTH, DRIVER_HEIGHT, LEFT_MARGIN, TOP_MARGIN)
+                                          HOUR_WIDTH, DRIVER_HEIGHT, 0, TOP_MARGIN)
 
-        # Configurer la zone de scroll
-        canvas.configure(scrollregion=(0, 0, LEFT_MARGIN + 28 * HOUR_WIDTH,
-                                       TOP_MARGIN + len(drivers) * DRIVER_HEIGHT + 20))
+        # Configurer les zones de scroll
+        canvas.configure(scrollregion=(0, 0, 28 * HOUR_WIDTH, total_height))
+        names_canvas.configure(scrollregion=(0, 0, NAMES_WIDTH, total_height))
 
     def suivi_draw_gantt_bar(self, canvas, mission, driver_idx, v_by_code,
                              hour_width, driver_height, left_margin, top_margin):
