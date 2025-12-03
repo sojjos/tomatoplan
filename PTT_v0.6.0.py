@@ -4530,7 +4530,8 @@ class TransportPlannerApp:
         # Essayer le cache d'abord
         cached = planning_cache.get_cached_planning(d)
         if cached is not None:
-            self.suivi_missions = [m.copy() for m in cached]  # Copie pour éviter les modifications
+            # Filtrer uniquement les missions valides (avec un id)
+            self.suivi_missions = [m.copy() for m in cached if m and isinstance(m, dict) and "id" in m]
         else:
             # Charger depuis les fichiers
             day_dir = get_planning_day_dir(d)
@@ -4541,7 +4542,7 @@ class TransportPlannerApp:
                     if file.name.startswith("_"):
                         continue
                     data = load_json(file, None)
-                    if data and "id" in data:  # Vérifier que c'est bien une mission
+                    if data and isinstance(data, dict) and "id" in data:  # Vérifier que c'est bien une mission
                         data["_path"] = file.as_posix()
                         self.suivi_missions.append(data)
 
