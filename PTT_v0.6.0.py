@@ -19,6 +19,7 @@ VOYAGES_FILE = DATA_DIR / "voyages.json"
 CHAUFFEURS_FILE = DATA_DIR / "chauffeurs.json"
 TARIFS_SST_FILE = DATA_DIR / "tarifs_sst.json"
 REVENUS_FILE = DATA_DIR / "revenus_palettes.json"
+ANNOUNCEMENTS_FILE = DATA_DIR / "annonces.json"
 
 from datetime import date, datetime, timedelta
 import uuid
@@ -3950,8 +3951,12 @@ class TransportPlannerApp:
         ttk.Button(view_frame, text="🕐 Par Heure", 
                   command=self.open_view_by_time,
                   style="View.TButton").pack(side="left", padx=2)
-        ttk.Button(view_frame, text="📍 Par Voyage", 
+        ttk.Button(view_frame, text="📍 Par Voyage",
                   command=self.open_view_by_voyage,
+                  style="View.TButton").pack(side="left", padx=2)
+
+        ttk.Button(view_frame, text="📢 Annonces",
+                  command=self.open_planning_announcements,
                   style="View.TButton").pack(side="left", padx=2)
 
         perms = self.rights["permissions"]
@@ -5501,7 +5506,152 @@ class TransportPlannerApp:
             ttk.Button(export_frame, text='📄 Exporter PDF', command=export_pdf_par_voyage).pack(side='left', padx=5)
         
         ttk.Button(export_frame, text="Fermer", command=on_close).pack(side="left", padx=10)
-    
+
+    def open_planning_announcements(self):
+        """Ouvrir la fenêtre des annonces du planning"""
+        win = tk.Toplevel(self.root)
+        win.title(f"Annonces Planning - {format_date_display(self.current_date)}")
+        win.geometry("700x500")
+        win.transient(self.root)
+        win.grab_set()
+
+        # Charger les annonces existantes
+        announcements = load_json(ANNOUNCEMENTS_FILE, default=[])
+
+        # Header
+        header = ttk.Frame(win, padding=10)
+        header.pack(fill="x")
+        ttk.Label(header, text="📢 Annonces du Planning",
+                 font=('Arial', 14, 'bold')).pack(side="left")
+        ttk.Label(header, text=f"Date: {self.current_date.strftime('%d/%m/%Y')}",
+                 font=('Arial', 11)).pack(side="right")
+
+        # Liste des annonces
+        list_frame = ttk.LabelFrame(win, text="Annonces actives", padding=10)
+        list_frame.pack(fill="both", expand=True, padx=10, pady=5)
+
+        columns = ("date_creation", "auteur", "message", "date_cible")
+        tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=10)
+
+        tree.heading("date_creation", text="Créé le")
+        tree.heading("auteur", text="Auteur")
+        tree.heading("message", text="Message")
+        tree.heading("date_cible", text="Date cible")
+
+        tree.column("date_creation", width=100)
+        tree.column("auteur", width=100)
+        tree.column("message", width=300)
+        tree.column("date_cible", width=100)
+
+        vsb = ttk.Scrollbar(list_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+
+        tree.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+
+        def refresh_announcements():
+            for item in tree.get_children():
+                tree.delete(item)
+
+            # Filtrer les annonces pour la date courante ou sans date cible
+            current_str = self.current_date.strftime("%Y-%m-%d")
+            for ann in announcements:
+                date_cible = ann.get("date_cible", "")
+                # Afficher si pas de date cible ou si date cible = date courante
+                if not date_cible or date_cible == current_str:
+                    tree.insert("", "end", values=(
+                        ann.get("date_creation", ""),
+                        ann.get("auteur", ""),
+                        ann.get("message", "")[:80] + ("..." if len(ann.get("message", "")) > 80 else ""),
+                        ann.get("date_cible", "Toutes")
+                    ))
+
+        refresh_announcements()
+
+        # Frame pour ajouter une nouvelle annonce
+        add_frame = ttk.LabelFrame(win, text="Nouvelle annonce", padding=10)
+        add_frame.pack(fill="x", padx=10, pady=5)
+
+        ttk.Label(add_frame, text="Message :").grid(row=0, column=0, sticky="w", padx=5)
+        msg_text = tk.Text(add_frame, height=3, width=60)
+        msg_text.grid(row=0, column=1, columnspan=2, padx=5, pady=5)
+
+        ttk.Label(add_frame, text="Date cible :").grid(row=1, column=0, sticky="w", padx=5)
+        date_var = tk.StringVar(value=self.current_date.strftime("%Y-%m-%d"))
+        date_entry = ttk.Entry(add_frame, textvariable=date_var, width=15)
+        date_entry.grid(row=1, column=1, sticky="w", padx=5, pady=5)
+        ttk.Label(add_frame, text="(vide = toutes les dates)", font=('Arial', 9, 'italic')).grid(row=1, column=2, sticky="w")
+
+        def add_announcement():
+            message = msg_text.get("1.0", "end-1c").strip()
+            if not message:
+                messagebox.showwarning("Attention", "Veuillez saisir un message.")
+                return
+
+            new_ann = {
+                "id": str(uuid.uuid4()),
+                "date_creation": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "auteur": self.current_user,
+                "message": message,
+                "date_cible": date_var.get().strip()
+            }
+            announcements.append(new_ann)
+            save_json(ANNOUNCEMENTS_FILE, announcements)
+
+            # Log de l'activité
+            if hasattr(self, 'activity_logger'):
+                self.activity_logger.log_action(
+                    action="create_announcement",
+                    entity_type="announcement",
+                    entity_id=new_ann["id"],
+                    details={"message": message[:100], "date_cible": date_var.get()}
+                )
+
+            msg_text.delete("1.0", "end")
+            refresh_announcements()
+            messagebox.showinfo("Succès", "Annonce ajoutée avec succès!")
+
+        def delete_selected():
+            selected = tree.selection()
+            if not selected:
+                messagebox.showwarning("Attention", "Veuillez sélectionner une annonce à supprimer.")
+                return
+
+            if not messagebox.askyesno("Confirmation", "Voulez-vous supprimer cette annonce ?"):
+                return
+
+            # Récupérer les valeurs de la ligne sélectionnée
+            item = tree.item(selected[0])
+            values = item['values']
+            date_creation = values[0]
+            auteur = values[1]
+
+            # Trouver et supprimer l'annonce correspondante
+            for i, ann in enumerate(announcements):
+                if ann.get("date_creation") == date_creation and ann.get("auteur") == auteur:
+                    del announcements[i]
+                    save_json(ANNOUNCEMENTS_FILE, announcements)
+
+                    if hasattr(self, 'activity_logger'):
+                        self.activity_logger.log_action(
+                            action="delete_announcement",
+                            entity_type="announcement",
+                            entity_id=ann.get("id", ""),
+                            details={"message": ann.get("message", "")[:100]}
+                        )
+                    break
+
+            refresh_announcements()
+            messagebox.showinfo("Succès", "Annonce supprimée!")
+
+        # Boutons d'action
+        btn_frame = ttk.Frame(win, padding=10)
+        btn_frame.pack(fill="x")
+
+        ttk.Button(btn_frame, text="➕ Ajouter l'annonce", command=add_announcement).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="🗑️ Supprimer la sélection", command=delete_selected).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="Fermer", command=win.destroy).pack(side="right", padx=5)
+
     def _fill_consolidated_view(self, tree, sort_by="time"):
         for item in tree.get_children():
             tree.delete(item)
