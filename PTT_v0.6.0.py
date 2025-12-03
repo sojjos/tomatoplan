@@ -4530,15 +4530,18 @@ class TransportPlannerApp:
         # Essayer le cache d'abord
         cached = planning_cache.get_cached_planning(d)
         if cached is not None:
-            self.suivi_missions = cached
+            self.suivi_missions = [m.copy() for m in cached]  # Copie pour éviter les modifications
         else:
             # Charger depuis les fichiers
             day_dir = get_planning_day_dir(d)
             self.suivi_missions = []
             if day_dir and day_dir.exists():
                 for file in day_dir.glob("*.json"):
+                    # Ignorer les fichiers de métadonnées (commençant par _)
+                    if file.name.startswith("_"):
+                        continue
                     data = load_json(file, None)
-                    if data:
+                    if data and "id" in data:  # Vérifier que c'est bien une mission
                         data["_path"] = file.as_posix()
                         self.suivi_missions.append(data)
 
