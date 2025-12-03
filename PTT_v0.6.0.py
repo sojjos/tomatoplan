@@ -3807,6 +3807,7 @@ class TransportPlannerApp:
 
         if perms["view_planning"]:
             self.build_planning_tab()
+            self.build_suivi_missions_tab()  # Nouvel onglet Suivi missions
         if perms["view_drivers"]:
             self.build_chauffeurs_tab()
         if perms["manage_voyages"]:
@@ -4080,6 +4081,775 @@ class TransportPlannerApp:
 
         self.build_planning_form()
         self.hide_planning_form()
+
+    # =============================================================================
+    # ONGLET SUIVI MISSIONS - Suivi de réalisation des voyages
+    # =============================================================================
+
+    def build_suivi_missions_tab(self):
+        """Construire l'onglet Suivi missions avec vue liste et Gantt"""
+        self.tab_suivi = ttk.Frame(self.notebook)
+        self.notebook.add(self.tab_suivi, text="Suivi missions")
+
+        # Variables pour le suivi
+        self.suivi_current_date = date.today()
+        self.suivi_missions = []
+        self.suivi_missions_status = {}  # {mission_id: True/False} pour le statut effectué
+
+        # Frame principal
+        main_frame = ttk.Frame(self.tab_suivi)
+        main_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Barre supérieure avec date et type de vue
+        top_frame = ttk.Frame(main_frame)
+        top_frame.pack(fill="x", pady=5)
+
+        ttk.Label(top_frame, text="Date :").pack(side="left")
+        self.suivi_date_var = tk.StringVar(value=format_date_display(self.suivi_current_date))
+        self.suivi_date_entry = ttk.Entry(top_frame, textvariable=self.suivi_date_var, width=12)
+        self.suivi_date_entry.bind('<Return>', lambda e: self.suivi_on_load_date())
+        self.suivi_date_entry.bind('<FocusOut>', lambda e: self.suivi_on_load_date())
+        self.suivi_date_entry.pack(side="left", padx=(5, 15))
+
+        ttk.Button(top_frame, text="◀ -1j",
+                  command=lambda: self.suivi_navigate_days(-1), width=8).pack(side="left", padx=2)
+        ttk.Button(top_frame, text="📅 Aujourd'hui",
+                  command=self.suivi_set_today, width=12).pack(side="left", padx=5)
+        ttk.Button(top_frame, text="+1j ▶",
+                  command=lambda: self.suivi_navigate_days(1), width=8).pack(side="left", padx=(2, 15))
+
+        ttk.Separator(top_frame, orient='vertical').pack(side="left", fill="y", padx=10)
+
+        # Liste déroulante de type de vue
+        ttk.Label(top_frame, text="Vue :").pack(side="left", padx=(0, 5))
+        self.suivi_view_type = tk.StringVar(value="Liste")
+        self.suivi_view_combo = ttk.Combobox(
+            top_frame,
+            textvariable=self.suivi_view_type,
+            values=["Liste", "Gantt"],
+            width=10,
+            state="readonly"
+        )
+        self.suivi_view_combo.pack(side="left")
+        self.suivi_view_combo.bind("<<ComboboxSelected>>", self.suivi_on_view_changed)
+
+        ttk.Button(top_frame, text="🔄 Rafraîchir", command=self.suivi_refresh_view).pack(side="right")
+
+        ttk.Separator(main_frame, orient='horizontal').pack(fill='x', pady=5)
+
+        # Résumé des stats
+        self.suivi_summary_frame = ttk.Frame(main_frame, relief='solid', borderwidth=1)
+        self.suivi_summary_frame.pack(fill='x', pady=3)
+
+        stats_container = ttk.Frame(self.suivi_summary_frame)
+        stats_container.pack(fill='x', padx=5, pady=3)
+
+        ttk.Label(stats_container, text="📊 Résumé:", font=('Arial', 9, 'bold')).pack(side='left', padx=(5, 10))
+
+        ttk.Label(stats_container, text="📦 Total missions:", font=('Arial', 8)).pack(side='left', padx=2)
+        self.suivi_total_label = ttk.Label(stats_container, text="0", font=('Arial', 10, 'bold'), foreground='#2196F3')
+        self.suivi_total_label.pack(side='left', padx=(0, 8))
+
+        ttk.Label(stats_container, text="✅ Effectuées:", font=('Arial', 8)).pack(side='left', padx=2)
+        self.suivi_done_label = ttk.Label(stats_container, text="0", font=('Arial', 10, 'bold'), foreground='#4CAF50')
+        self.suivi_done_label.pack(side='left', padx=(0, 8))
+
+        ttk.Label(stats_container, text="⏳ En attente:", font=('Arial', 8)).pack(side='left', padx=2)
+        self.suivi_pending_label = ttk.Label(stats_container, text="0", font=('Arial', 10, 'bold'), foreground='#FF9800')
+        self.suivi_pending_label.pack(side='left', padx=(0, 8))
+
+        # Container pour les vues (Liste et Gantt)
+        self.suivi_view_container = ttk.Frame(main_frame)
+        self.suivi_view_container.pack(fill="both", expand=True, pady=5)
+
+        # Frame pour la vue Liste
+        self.suivi_list_frame = ttk.Frame(self.suivi_view_container)
+
+        # Frame pour la vue Gantt
+        self.suivi_gantt_frame = ttk.Frame(self.suivi_view_container)
+
+        # Construire la vue Liste
+        self._build_suivi_list_view()
+
+        # Construire la vue Gantt
+        self._build_suivi_gantt_view()
+
+        # Afficher la vue Liste par défaut
+        self.suivi_list_frame.pack(fill="both", expand=True)
+
+        # Formulaire d'édition (caché par défaut)
+        self._build_suivi_edit_form()
+        self.suivi_hide_form()
+
+        # Message "Planning en construction" (caché par défaut)
+        self.suivi_no_planning_frame = ttk.Frame(self.suivi_view_container)
+        self.suivi_no_planning_label = ttk.Label(
+            self.suivi_no_planning_frame,
+            text="📋 Planning en construction",
+            font=('Arial', 16, 'bold'),
+            foreground='#666666'
+        )
+        self.suivi_no_planning_label.pack(expand=True, pady=50)
+
+        # Charger les missions du jour
+        self.suivi_load_missions()
+
+    def _build_suivi_list_view(self):
+        """Construire la vue liste du suivi missions"""
+        # Canvas et scrollbar pour scroll vertical
+        canvas = tk.Canvas(self.suivi_list_frame, bg="white")
+        scrollbar = ttk.Scrollbar(self.suivi_list_frame, orient="vertical", command=canvas.yview)
+        self.suivi_scrollable_frame = ttk.Frame(canvas)
+
+        self.suivi_scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=self.suivi_scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Scroll avec molette
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        canvas.bind("<MouseWheel>", on_mousewheel)
+        self.suivi_scrollable_frame.bind("<MouseWheel>", on_mousewheel)
+
+        self.suivi_canvas = canvas
+
+        # Container pour les sections par pays
+        self.suivi_planning_container = ttk.Frame(self.suivi_scrollable_frame)
+        self.suivi_planning_container.pack(fill="both", expand=True)
+
+        # Dictionnaires pour stocker les frames et trees par pays
+        self.suivi_country_frames = {}
+        self.suivi_country_trees = {}
+
+    def _build_suivi_gantt_view(self):
+        """Construire la vue Gantt du suivi missions"""
+        # Header avec légende
+        header_frame = ttk.Frame(self.suivi_gantt_frame)
+        header_frame.pack(fill="x", pady=5)
+
+        ttk.Label(header_frame, text="📊 Vue Gantt - Planning par chauffeur",
+                 font=('Arial', 11, 'bold')).pack(side="left", padx=5)
+
+        # Légende
+        legend_frame = ttk.Frame(header_frame)
+        legend_frame.pack(side="right", padx=10)
+
+        ttk.Label(legend_frame, text="Légende:", font=('Arial', 8)).pack(side="left", padx=5)
+
+        # Créer une petite barre de couleur pour la légende
+        liv_canvas = tk.Canvas(legend_frame, width=20, height=12, bg="#2196F3", highlightthickness=1)
+        liv_canvas.pack(side="left", padx=2)
+        ttk.Label(legend_frame, text="Livraison", font=('Arial', 8)).pack(side="left", padx=(0, 10))
+
+        ram_canvas = tk.Canvas(legend_frame, width=20, height=12, bg="#4CAF50", highlightthickness=1)
+        ram_canvas.pack(side="left", padx=2)
+        ttk.Label(legend_frame, text="Ramasse", font=('Arial', 8)).pack(side="left", padx=(0, 10))
+
+        done_canvas = tk.Canvas(legend_frame, width=20, height=12, bg="#9E9E9E", highlightthickness=1)
+        done_canvas.pack(side="left", padx=2)
+        ttk.Label(legend_frame, text="Effectué", font=('Arial', 8)).pack(side="left")
+
+        # Container principal du Gantt
+        self.suivi_gantt_container = ttk.Frame(self.suivi_gantt_frame)
+        self.suivi_gantt_container.pack(fill="both", expand=True)
+
+        # Canvas pour le Gantt
+        self.gantt_canvas = tk.Canvas(self.suivi_gantt_container, bg="white", highlightthickness=0)
+        self.gantt_h_scrollbar = ttk.Scrollbar(self.suivi_gantt_container, orient="horizontal",
+                                                command=self.gantt_canvas.xview)
+        self.gantt_v_scrollbar = ttk.Scrollbar(self.suivi_gantt_container, orient="vertical",
+                                                command=self.gantt_canvas.yview)
+
+        self.gantt_canvas.configure(xscrollcommand=self.gantt_h_scrollbar.set,
+                                    yscrollcommand=self.gantt_v_scrollbar.set)
+
+        self.gantt_v_scrollbar.pack(side="right", fill="y")
+        self.gantt_h_scrollbar.pack(side="bottom", fill="x")
+        self.gantt_canvas.pack(side="left", fill="both", expand=True)
+
+        # Bind molette pour scroll horizontal
+        def on_gantt_mousewheel(event):
+            # Shift + molette = scroll horizontal, sinon vertical
+            if event.state & 0x1:  # Shift key
+                self.gantt_canvas.xview_scroll(int(-1 * (event.delta / 120)), "units")
+            else:
+                # Molette normale = scroll horizontal dans le Gantt
+                self.gantt_canvas.xview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        self.gantt_canvas.bind("<MouseWheel>", on_gantt_mousewheel)
+
+    def _build_suivi_edit_form(self):
+        """Construire le formulaire d'édition pour le suivi missions"""
+        self.suivi_form_frame = ttk.LabelFrame(self.tab_suivi, text="Modifier le voyage")
+
+        self.suivi_form_mission = None
+
+        # Variables du formulaire
+        self.suivi_form_type = tk.StringVar()
+        self.suivi_form_heure = tk.StringVar()
+        self.suivi_form_voyage = tk.StringVar()
+        self.suivi_form_nb_pal = tk.StringVar()
+        self.suivi_form_sst = tk.StringVar()
+        self.suivi_form_chauffeur = tk.StringVar()
+        self.suivi_form_ramasse = tk.StringVar()
+        self.suivi_form_infos = tk.StringVar()
+        self.suivi_form_numero = tk.StringVar()
+
+        row = 0
+        ttk.Label(self.suivi_form_frame, text="Type :").grid(row=row, column=0, sticky="w", padx=5, pady=2)
+        rb_liv = ttk.Radiobutton(self.suivi_form_frame, text="Livraison",
+                                 variable=self.suivi_form_type, value="LIVRAISON",
+                                 command=self.suivi_on_form_type_changed)
+        rb_ram = ttk.Radiobutton(self.suivi_form_frame, text="Ramasse",
+                                 variable=self.suivi_form_type, value="RAMASSE",
+                                 command=self.suivi_on_form_type_changed)
+        rb_liv.grid(row=row, column=1, sticky="w", padx=5, pady=2)
+        rb_ram.grid(row=row, column=2, sticky="w", padx=5, pady=2)
+        row += 1
+
+        ttk.Label(self.suivi_form_frame, text="Heure :").grid(row=row, column=0, sticky="w", padx=5, pady=2)
+        self.suivi_form_heure_cb = ttk.Combobox(self.suivi_form_frame, textvariable=self.suivi_form_heure,
+                                                values=TIME_CHOICES, width=8)
+        self.suivi_form_heure_cb.grid(row=row, column=1, sticky="w", padx=5, pady=2)
+        row += 1
+
+        ttk.Label(self.suivi_form_frame, text="Voyage :").grid(row=row, column=0, sticky="w", padx=5, pady=2)
+        self.suivi_form_voy_cb = ttk.Combobox(self.suivi_form_frame, textvariable=self.suivi_form_voyage,
+                                              values=[v["code"] for v in self.voyages if v.get("actif", True)],
+                                              width=15)
+        self.suivi_form_voy_cb.grid(row=row, column=1, columnspan=2, sticky="w", padx=5, pady=2)
+        row += 1
+
+        ttk.Label(self.suivi_form_frame, text="Ramasse :").grid(row=row, column=0, sticky="w", padx=5, pady=2)
+        self.suivi_form_ram_entry = ttk.Entry(self.suivi_form_frame, textvariable=self.suivi_form_ramasse, width=25)
+        self.suivi_form_ram_entry.grid(row=row, column=1, columnspan=2, sticky="w", padx=5, pady=2)
+        row += 1
+
+        ttk.Label(self.suivi_form_frame, text="Nb palettes :").grid(row=row, column=0, sticky="w", padx=5, pady=2)
+        ttk.Entry(self.suivi_form_frame, textvariable=self.suivi_form_nb_pal, width=5).grid(row=row, column=1, sticky="w", padx=5, pady=2)
+        row += 1
+
+        ttk.Label(self.suivi_form_frame, text="SST :").grid(row=row, column=0, sticky="w", padx=5, pady=2)
+        self.suivi_form_sst_cb = ttk.Combobox(self.suivi_form_frame, textvariable=self.suivi_form_sst,
+                                              values=self.sst_list, width=15)
+        self.suivi_form_sst_cb.grid(row=row, column=1, sticky="w", padx=5, pady=2)
+        row += 1
+
+        ttk.Label(self.suivi_form_frame, text="Chauffeur :").grid(row=row, column=0, sticky="w", padx=5, pady=2)
+        self.suivi_form_ch_cb = ttk.Combobox(self.suivi_form_frame, textvariable=self.suivi_form_chauffeur,
+                                             values=[c.get("nom_affichage", c.get("nom", "")) for c in self.chauffeurs],
+                                             width=20)
+        self.suivi_form_ch_cb.grid(row=row, column=1, sticky="w", padx=5, pady=2)
+        row += 1
+
+        ttk.Label(self.suivi_form_frame, text="Numéro tournée :").grid(row=row, column=0, sticky="w", padx=5, pady=2)
+        ttk.Label(self.suivi_form_frame, textvariable=self.suivi_form_numero).grid(row=row, column=1, sticky="w", padx=5, pady=2)
+        row += 1
+
+        ttk.Label(self.suivi_form_frame, text="Informations :").grid(row=row, column=0, sticky="w", padx=5, pady=2)
+        ttk.Entry(self.suivi_form_frame, textvariable=self.suivi_form_infos, width=30).grid(
+            row=row, column=1, columnspan=2, sticky="w", padx=5, pady=2
+        )
+        row += 1
+
+        btn_frame = ttk.Frame(self.suivi_form_frame)
+        btn_frame.grid(row=row, column=0, columnspan=4, pady=5, sticky="e")
+        ttk.Button(btn_frame, text="💾 Enregistrer", command=self.suivi_on_form_save).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="❌ Annuler", command=self.suivi_hide_form).pack(side="left")
+
+    def suivi_on_form_type_changed(self):
+        """Mise à jour du formulaire lors du changement de type"""
+        if self.suivi_form_type.get() == "LIVRAISON":
+            self.suivi_form_ram_entry.configure(state="disabled")
+            self.suivi_form_ramasse.set("")
+        else:
+            self.suivi_form_ram_entry.configure(state="normal")
+
+    def suivi_show_form(self, mission):
+        """Afficher le formulaire d'édition avec les données de la mission"""
+        self.suivi_form_mission = mission
+
+        self.suivi_form_type.set(mission.get("type", "LIVRAISON"))
+        self.suivi_form_heure.set(mission.get("heure", TIME_CHOICES[0]))
+        self.suivi_form_voyage.set(mission.get("voyage", ""))
+        self.suivi_form_ramasse.set(mission.get("ramasse", ""))
+        self.suivi_form_nb_pal.set(str(mission.get("nb_pal", 0)))
+        self.suivi_form_sst.set(mission.get("sst", ""))
+        self.suivi_form_chauffeur.set(mission.get("chauffeur_nom", ""))
+        self.suivi_form_infos.set(mission.get("infos", ""))
+        self.suivi_form_numero.set(str(mission.get("numero", "")))
+
+        self.suivi_on_form_type_changed()
+        self.suivi_form_frame.pack(fill="x", padx=5, pady=5, before=self.suivi_view_container)
+
+    def suivi_hide_form(self):
+        """Masquer le formulaire d'édition"""
+        self.suivi_form_frame.pack_forget()
+        self.suivi_form_mission = None
+
+    def suivi_on_form_save(self):
+        """Sauvegarder les modifications du formulaire"""
+        if not self.suivi_form_mission:
+            return
+
+        mission = self.suivi_form_mission
+        mid = mission["id"]
+
+        # Récupérer les nouvelles valeurs
+        type_ = self.suivi_form_type.get()
+        heure = self.suivi_form_heure.get()
+        voyage = self.suivi_form_voyage.get()
+        ramasse = self.suivi_form_ramasse.get() if type_ == "RAMASSE" else ""
+
+        try:
+            nb_pal = int(self.suivi_form_nb_pal.get())
+        except ValueError:
+            nb_pal = 0
+
+        sst = self.suivi_form_sst.get()
+        chauffeur_nom = self.suivi_form_chauffeur.get()
+        infos = self.suivi_form_infos.get()
+
+        # Trouver l'ID du chauffeur
+        chauffeur_id = mission.get("chauffeur_id", "")
+        for ch in self.chauffeurs:
+            if ch.get("nom_affichage") == chauffeur_nom or ch.get("nom") == chauffeur_nom:
+                chauffeur_id = ch["id"]
+                break
+
+        # Mettre à jour la mission
+        before_state = {k: v for k, v in mission.items() if k != "_path"}
+
+        mission.update({
+            "type": type_,
+            "heure": heure,
+            "voyage": voyage,
+            "ramasse": ramasse,
+            "nb_pal": nb_pal,
+            "sst": sst,
+            "chauffeur_nom": chauffeur_nom,
+            "chauffeur_id": chauffeur_id,
+            "infos": infos,
+        })
+
+        # Sauvegarder dans le fichier
+        path = mission.get("_path")
+        if path:
+            save_json(path, {k: v for k, v in mission.items() if k != "_path"})
+            planning_cache.force_refresh(self.suivi_current_date)
+
+        # Logger l'action
+        activity_logger.log_action("MISSION_EDIT", {
+            "mission_id": mid,
+            "voyage": voyage,
+            "type": type_,
+            "date": self.suivi_current_date.strftime("%Y-%m-%d"),
+            "source": "suivi_missions",
+        }, before_state=before_state, after_state={k: v for k, v in mission.items() if k != "_path"})
+
+        self.suivi_hide_form()
+        self.suivi_refresh_view()
+
+        # Aussi rafraîchir la vue Planning si on est sur la même date
+        if self.suivi_current_date == self.current_date:
+            self.load_planning_for_date(self.current_date)
+
+    def suivi_set_today(self):
+        """Réinitialiser à la date d'aujourd'hui"""
+        self.suivi_current_date = date.today()
+        self.suivi_date_var.set(format_date_display(self.suivi_current_date))
+        self.suivi_load_missions()
+
+    def suivi_navigate_days(self, days):
+        """Naviguer dans les dates"""
+        try:
+            current = datetime.strptime(self.suivi_date_var.get(), "%d/%m/%Y").date()
+            new_date = current + timedelta(days=days)
+            self.suivi_date_var.set(format_date_display(new_date))
+            self.suivi_current_date = new_date
+            self.suivi_load_missions()
+        except ValueError:
+            messagebox.showerror("Erreur", "Format de date invalide.")
+
+    def suivi_on_load_date(self):
+        """Charger le planning pour une date spécifique"""
+        try:
+            d = parse_date_input(self.suivi_date_var.get())
+        except ValueError:
+            messagebox.showerror("Erreur", "Date invalide.\nFormat attendu: JJ/MM/AAAA")
+            return
+        self.suivi_current_date = d
+        self.suivi_load_missions()
+
+    def suivi_on_view_changed(self, event=None):
+        """Changer le type de vue (Liste/Gantt)"""
+        view_type = self.suivi_view_type.get()
+
+        # Masquer toutes les vues
+        self.suivi_list_frame.pack_forget()
+        self.suivi_gantt_frame.pack_forget()
+        self.suivi_no_planning_frame.pack_forget()
+
+        if not self.suivi_missions:
+            self.suivi_no_planning_frame.pack(fill="both", expand=True)
+            return
+
+        if view_type == "Liste":
+            self.suivi_list_frame.pack(fill="both", expand=True)
+        else:
+            self.suivi_gantt_frame.pack(fill="both", expand=True)
+            self.suivi_draw_gantt()
+
+    def suivi_load_missions(self):
+        """Charger les missions pour la date courante du suivi"""
+        d = self.suivi_current_date
+
+        # Essayer le cache d'abord
+        cached = planning_cache.get_cached_planning(d)
+        if cached is not None:
+            self.suivi_missions = cached
+        else:
+            # Charger depuis les fichiers
+            day_dir = get_planning_day_dir(d)
+            self.suivi_missions = []
+            if day_dir and day_dir.exists():
+                for file in day_dir.glob("*.json"):
+                    data = load_json(file, None)
+                    if data:
+                        data["_path"] = file.as_posix()
+                        self.suivi_missions.append(data)
+
+        # Charger les statuts de suivi depuis le fichier de statut
+        self.suivi_load_status()
+
+        self.suivi_refresh_view()
+
+    def suivi_load_status(self):
+        """Charger les statuts de réalisation des missions"""
+        d = self.suivi_current_date
+        status_file = get_planning_day_dir(d)
+        if status_file and status_file.exists():
+            status_path = status_file / "_suivi_status.json"
+            if status_path.exists():
+                self.suivi_missions_status = load_json(status_path, {})
+            else:
+                self.suivi_missions_status = {}
+        else:
+            self.suivi_missions_status = {}
+
+    def suivi_save_status(self):
+        """Sauvegarder les statuts de réalisation des missions"""
+        d = self.suivi_current_date
+        day_dir = get_planning_day_dir(d)
+        if day_dir and day_dir.exists():
+            status_path = day_dir / "_suivi_status.json"
+            save_json(status_path, self.suivi_missions_status)
+
+    def suivi_refresh_view(self):
+        """Rafraîchir la vue actuelle du suivi"""
+        # Masquer le formulaire si visible
+        self.suivi_hide_form()
+
+        # Mettre à jour les stats
+        total = len(self.suivi_missions)
+        done = sum(1 for m in self.suivi_missions if self.suivi_missions_status.get(m["id"], False))
+        pending = total - done
+
+        self.suivi_total_label.config(text=str(total))
+        self.suivi_done_label.config(text=str(done))
+        self.suivi_pending_label.config(text=str(pending))
+
+        # Afficher la vue appropriée
+        self.suivi_on_view_changed()
+
+        if self.suivi_missions:
+            if self.suivi_view_type.get() == "Liste":
+                self.suivi_refresh_list_view()
+            else:
+                self.suivi_draw_gantt()
+
+    def suivi_refresh_list_view(self):
+        """Rafraîchir la vue liste du suivi missions"""
+        # Supprimer les anciennes sections
+        for country, frame in self.suivi_country_frames.items():
+            frame.destroy()
+        self.suivi_country_frames.clear()
+        self.suivi_country_trees.clear()
+
+        # Organiser les missions par pays
+        missions_by_country = {}
+        v_by_code = {v.get("code"): v for v in self.voyages}
+
+        for m in self.suivi_missions:
+            voyage_code = m.get("voyage", "")
+            voyage = v_by_code.get(voyage_code, {})
+            country = voyage.get("country", "Belgique")
+
+            if country not in missions_by_country:
+                missions_by_country[country] = []
+            missions_by_country[country].append(m)
+
+        # Trier par heure
+        for country in missions_by_country:
+            missions_by_country[country] = sorted(
+                missions_by_country[country],
+                key=lambda m: self._time_key(m)
+            )
+
+        sorted_countries = sorted(missions_by_country.keys(), key=lambda x: (x != "Belgique", x))
+
+        for country in sorted_countries:
+            self.suivi_create_country_section(country, missions_by_country[country])
+
+    def suivi_create_country_section(self, country, missions):
+        """Créer une section par pays pour le suivi missions"""
+        bg_color = COUNTRY_COLORS.get(country, "#F5F5F5")
+
+        flag_emoji = self.get_country_flag(country)
+        country_frame = ttk.LabelFrame(
+            self.suivi_planning_container,
+            text=f"  {flag_emoji}  {country.upper()} ({len(missions)} missions)  ",
+            padding=10
+        )
+        country_frame.pack(fill="x", expand=False, pady=5)
+
+        # Treeview avec colonnes incluant case à cocher
+        columns = ("effectue", "heure", "type", "voyage", "nb_pal", "numero", "sst", "chauffeur", "ramasse", "infos")
+        tree = ttk.Treeview(country_frame, columns=columns, show="headings", height=min(10, len(missions)))
+
+        col_config = [
+            ("effectue", "✅", 40),
+            ("heure", "Heure", 60),
+            ("type", "Type", 80),
+            ("voyage", "Voyage", 90),
+            ("nb_pal", "Nb Pal", 50),
+            ("numero", "N°", 40),
+            ("sst", "SST", 70),
+            ("chauffeur", "Chauffeur", 100),
+            ("ramasse", "Ramasse", 90),
+            ("infos", "Infos", 120)
+        ]
+
+        for col, txt, width in col_config:
+            tree.heading(col, text=txt)
+            tree.column(col, width=width, minwidth=30, stretch=True if col != "effectue" else False)
+
+        vsb = ttk.Scrollbar(country_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+
+        tree.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+
+        # Tags pour le style
+        tree.tag_configure('done', background='#E8F5E9', foreground='#2E7D32')
+        tree.tag_configure('pending', background='white')
+        tree.tag_configure('oddrow', background='#F5F5F5')
+        tree.tag_configure('evenrow', background='white')
+
+        # Remplir le treeview
+        row_num = 0
+        for m in missions:
+            mid = m["id"]
+            is_done = self.suivi_missions_status.get(mid, False)
+
+            sst_display = "N/A" if m.get("sans_sst", False) else m.get("sst", "")
+            chauffeur_display = "N/A" if m.get("sans_chauffeur", False) else m.get("chauffeur_nom", "")
+
+            values = (
+                "✔" if is_done else "☐",
+                m.get("heure", ""),
+                m.get("type", ""),
+                m.get("voyage", ""),
+                m.get("nb_pal", ""),
+                m.get("numero", ""),
+                sst_display,
+                chauffeur_display,
+                m.get("ramasse", ""),
+                m.get("infos", ""),
+            )
+
+            tag = 'done' if is_done else ('oddrow' if row_num % 2 else 'evenrow')
+            tree.insert("", "end", iid=mid, values=values, tags=(tag,))
+            row_num += 1
+
+        # Bindings
+        tree.bind("<Double-1>", lambda e, t=tree: self.suivi_on_double_click(e, t))
+        tree.bind("<Button-1>", lambda e, t=tree: self.suivi_on_click(e, t))
+
+        self.suivi_country_frames[country] = country_frame
+        self.suivi_country_trees[country] = tree
+
+    def suivi_on_click(self, event, tree):
+        """Gérer le clic simple pour basculer le statut effectué"""
+        region = tree.identify_region(event.x, event.y)
+        if region == "cell":
+            column = tree.identify_column(event.x)
+            if column == "#1":  # Colonne "effectue"
+                item = tree.identify_row(event.y)
+                if item:
+                    self.suivi_toggle_status(item)
+
+    def suivi_on_double_click(self, event, tree):
+        """Gérer le double-clic pour éditer une mission"""
+        region = tree.identify_region(event.x, event.y)
+        if region == "cell":
+            column = tree.identify_column(event.x)
+            if column != "#1":  # Pas sur la colonne effectue
+                item = tree.identify_row(event.y)
+                if item:
+                    mission = next((m for m in self.suivi_missions if m["id"] == item), None)
+                    if mission:
+                        self.suivi_show_form(mission)
+
+    def suivi_toggle_status(self, mission_id):
+        """Basculer le statut effectué d'une mission"""
+        current = self.suivi_missions_status.get(mission_id, False)
+        self.suivi_missions_status[mission_id] = not current
+        self.suivi_save_status()
+
+        # Logger l'action
+        activity_logger.log_action("MISSION_STATUS_CHANGE", {
+            "mission_id": mission_id,
+            "date": self.suivi_current_date.strftime("%Y-%m-%d"),
+            "new_status": "effectue" if not current else "non_effectue",
+        })
+
+        self.suivi_refresh_view()
+
+    def suivi_draw_gantt(self):
+        """Dessiner le diagramme de Gantt"""
+        canvas = self.gantt_canvas
+        canvas.delete("all")
+
+        if not self.suivi_missions:
+            canvas.create_text(400, 200, text="Aucune mission pour cette date",
+                             font=('Arial', 14), fill='gray')
+            return
+
+        # Configuration du Gantt
+        DRIVER_HEIGHT = 40
+        HOUR_WIDTH = 100
+        LEFT_MARGIN = 150  # Pour les noms des chauffeurs
+        TOP_MARGIN = 40    # Pour les heures
+
+        # Collecter les chauffeurs uniques avec des missions ce jour
+        drivers_with_missions = {}
+        v_by_code = {v.get("code"): v for v in self.voyages}
+
+        for m in self.suivi_missions:
+            chauffeur = m.get("chauffeur_nom", "Sans chauffeur")
+            if m.get("sans_chauffeur", False):
+                chauffeur = "Sans chauffeur"
+            if chauffeur not in drivers_with_missions:
+                drivers_with_missions[chauffeur] = []
+            drivers_with_missions[chauffeur].append(m)
+
+        drivers = sorted(drivers_with_missions.keys())
+
+        # Dessiner les en-têtes d'heures (0h à 28h pour couvrir les heures tardives)
+        for hour in range(0, 28):
+            x = LEFT_MARGIN + hour * HOUR_WIDTH
+            canvas.create_text(x + HOUR_WIDTH/2, 20, text=f"{hour:02d}:00",
+                             font=('Arial', 9))
+            canvas.create_line(x, TOP_MARGIN, x, TOP_MARGIN + len(drivers) * DRIVER_HEIGHT,
+                             fill='#E0E0E0', dash=(2, 2))
+
+        # Dessiner les lignes des chauffeurs
+        for i, driver in enumerate(drivers):
+            y = TOP_MARGIN + i * DRIVER_HEIGHT
+
+            # Fond alterné
+            if i % 2 == 0:
+                canvas.create_rectangle(0, y, LEFT_MARGIN + 28 * HOUR_WIDTH, y + DRIVER_HEIGHT,
+                                       fill='#FAFAFA', outline='')
+
+            # Nom du chauffeur
+            canvas.create_text(10, y + DRIVER_HEIGHT/2, text=driver,
+                             anchor='w', font=('Arial', 9, 'bold'))
+
+            # Ligne horizontale
+            canvas.create_line(LEFT_MARGIN, y + DRIVER_HEIGHT,
+                             LEFT_MARGIN + 28 * HOUR_WIDTH, y + DRIVER_HEIGHT,
+                             fill='#E0E0E0')
+
+            # Dessiner les barres des missions
+            for m in drivers_with_missions[driver]:
+                self.suivi_draw_gantt_bar(canvas, m, i, v_by_code,
+                                          HOUR_WIDTH, DRIVER_HEIGHT, LEFT_MARGIN, TOP_MARGIN)
+
+        # Configurer la zone de scroll
+        canvas.configure(scrollregion=(0, 0, LEFT_MARGIN + 28 * HOUR_WIDTH,
+                                       TOP_MARGIN + len(drivers) * DRIVER_HEIGHT + 20))
+
+    def suivi_draw_gantt_bar(self, canvas, mission, driver_idx, v_by_code,
+                             hour_width, driver_height, left_margin, top_margin):
+        """Dessiner une barre de mission dans le Gantt"""
+        try:
+            heure_str = mission.get("heure", "08:00")
+            h, m = map(int, heure_str.split(":"))
+            start_hour = h + m / 60
+        except:
+            start_hour = 8
+
+        # Récupérer la durée du voyage
+        voyage_code = mission.get("voyage", "")
+        voyage = v_by_code.get(voyage_code, {})
+        duree_minutes = voyage.get("duree", 60)  # Par défaut 60 minutes
+        duree_hours = duree_minutes / 60
+
+        # Calculer les coordonnées
+        x1 = left_margin + start_hour * hour_width
+        x2 = x1 + duree_hours * hour_width
+        y1 = top_margin + driver_idx * driver_height + 5
+        y2 = y1 + driver_height - 10
+
+        # Couleur selon le type et le statut
+        is_done = self.suivi_missions_status.get(mission["id"], False)
+        if is_done:
+            fill_color = "#9E9E9E"  # Gris pour effectué
+        elif mission.get("type") == "LIVRAISON":
+            fill_color = "#2196F3"  # Bleu pour livraison
+        else:
+            fill_color = "#4CAF50"  # Vert pour ramasse
+
+        # Dessiner la barre
+        bar = canvas.create_rectangle(x1, y1, x2, y2, fill=fill_color, outline='#333333')
+
+        # Texte dans la barre
+        text = f"{voyage_code}"
+        if x2 - x1 > 50:
+            canvas.create_text((x1 + x2) / 2, (y1 + y2) / 2, text=text,
+                             fill='white', font=('Arial', 8, 'bold'))
+
+        # Tooltip au survol
+        def show_tooltip(event):
+            info = f"{mission.get('type')}: {voyage_code}\n"
+            info += f"Heure: {heure_str}\n"
+            info += f"Durée: {duree_minutes} min\n"
+            info += f"SST: {mission.get('sst', 'N/A')}"
+            # Créer un tooltip simple
+            tooltip = canvas.create_text(event.x + 10, event.y - 10,
+                                        text=info, anchor='nw',
+                                        fill='black', font=('Arial', 8),
+                                        tags='tooltip')
+            bg = canvas.create_rectangle(canvas.bbox(tooltip), fill='#FFFFCC', outline='black', tags='tooltip')
+            canvas.tag_lower(bg, tooltip)
+
+        def hide_tooltip(event):
+            canvas.delete('tooltip')
+
+        canvas.tag_bind(bar, '<Enter>', show_tooltip)
+        canvas.tag_bind(bar, '<Leave>', hide_tooltip)
+
+        # Clic pour basculer le statut
+        canvas.tag_bind(bar, '<Button-1>', lambda e, mid=mission["id"]: self.suivi_toggle_status(mid))
 
     def open_view_by_driver(self):
         win = tk.Toplevel(self.root)
@@ -7041,7 +7811,8 @@ class TransportPlannerApp:
 
         self.voy_foreign_var = tk.BooleanVar(value=False)
         self.voy_country_var = tk.StringVar(value="Belgique")
-        
+        self.voy_duree_var = tk.StringVar(value="60")  # Durée par défaut: 60 minutes
+
         row = 1
         ttk.Label(right, text="Code :").grid(row=row, column=0, sticky="w")
         ttk.Entry(right, textvariable=self.voy_code_var, width=20).grid(row=row, column=1, sticky="w")
@@ -7064,6 +7835,14 @@ class TransportPlannerApp:
                                            values=[c for c in EU_COUNTRIES if c!="Belgique"],
                                            state="disabled", width=18)
         self.voy_country_cb.grid(row=row, column=1, sticky="w")
+        row += 1
+
+        ttk.Label(right, text="Durée (min) :").grid(row=row, column=0, sticky="w")
+        duree_frame = ttk.Frame(right)
+        duree_frame.grid(row=row, column=1, sticky="w")
+        self.voy_duree_entry = ttk.Entry(duree_frame, textvariable=self.voy_duree_var, width=8)
+        self.voy_duree_entry.pack(side="left")
+        ttk.Label(duree_frame, text="min (ex: 60, 90, 120...)", foreground="gray").pack(side="left", padx=5)
         row += 1
 
         btnf = ttk.Frame(right)
@@ -7130,6 +7909,8 @@ class TransportPlannerApp:
         self.voy_code_var.set("")
         self.voy_type_var.set("LIVRAISON")
         self.voy_actif_var.set(True)
+        if hasattr(self, 'voy_duree_var'):
+            self.voy_duree_var.set("60")
         if hasattr(self, "tree_voy"):
             self.tree_voy.selection_remove(*self.tree_voy.selection())
 
@@ -7157,6 +7938,10 @@ class TransportPlannerApp:
                 self.voy_country_cb.configure(state='readonly' if is_foreign else 'disabled')
             except Exception:
                 pass
+        # Charger la durée
+        if hasattr(self, 'voy_duree_var'):
+            duree = v.get('duree', 60)
+            self.voy_duree_var.set(str(duree))
 
     def on_voy_save(self):
         code = self.voy_code_var.get().strip()
@@ -7174,11 +7959,22 @@ class TransportPlannerApp:
             pass
         actif = bool(self.voy_actif_var.get())
 
+        # Récupérer la durée (en minutes)
+        duree = 60  # Valeur par défaut
+        try:
+            duree_str = self.voy_duree_var.get().strip()
+            if duree_str:
+                duree = int(duree_str)
+                if duree <= 0:
+                    duree = 60
+        except ValueError:
+            duree = 60
+
         if self.voy_form_mode == "add" or self.voy_form_existing is None:
             if any(v.get("code") == code for v in self.voyages):
                 messagebox.showerror("Erreur", "Un voyage avec ce code existe déjà.")
                 return
-            v = {"code": code, "type": type_, "actif": actif, "country": country}
+            v = {"code": code, "type": type_, "actif": actif, "country": country, "duree": duree}
             self.voyages.append(v)
             self.voy_form_existing = v
             self.voy_form_mode = "edit"
@@ -7188,6 +7984,7 @@ class TransportPlannerApp:
                 "type": type_,
                 "country": country,
                 "actif": actif,
+                "duree": duree,
             })
         else:
             old_code = self.voy_form_existing.get("code")
@@ -7200,6 +7997,7 @@ class TransportPlannerApp:
             self.voy_form_existing["type"] = type_
             self.voy_form_existing["actif"] = actif
             self.voy_form_existing["country"] = country
+            self.voy_form_existing["duree"] = duree
             activity_logger.log_action("VOYAGE_EDIT", {
                 "code": code,
                 "old_code": old_code,
