@@ -4230,12 +4230,28 @@ class TransportPlannerApp:
 
     def _build_suivi_gantt_view(self):
         """Construire la vue Gantt du suivi missions"""
-        # Header avec légende
+        # Header avec légende et tri
         header_frame = ttk.Frame(self.suivi_gantt_frame)
         header_frame.pack(fill="x", pady=5)
 
         ttk.Label(header_frame, text="📊 Vue Gantt - Planning par chauffeur",
                  font=('Arial', 11, 'bold')).pack(side="left", padx=5)
+
+        # Option de tri des chauffeurs
+        sort_frame = ttk.Frame(header_frame)
+        sort_frame.pack(side="left", padx=20)
+
+        ttk.Label(sort_frame, text="Trier par:", font=('Arial', 8)).pack(side="left", padx=2)
+        self.gantt_sort_var = tk.StringVar(value="Alphabétique")
+        self.gantt_sort_combo = ttk.Combobox(
+            sort_frame,
+            textvariable=self.gantt_sort_var,
+            values=["Alphabétique", "SST"],
+            width=12,
+            state="readonly"
+        )
+        self.gantt_sort_combo.pack(side="left", padx=2)
+        self.gantt_sort_combo.bind("<<ComboboxSelected>>", lambda e: self.suivi_draw_gantt())
 
         # Légende
         legend_frame = ttk.Frame(header_frame)
@@ -4609,43 +4625,58 @@ class TransportPlannerApp:
             self.suivi_create_country_section(country, missions_by_country[country])
 
     def suivi_create_country_section(self, country, missions):
-        """Créer une section par pays pour le suivi missions"""
+        """Créer une section par pays pour le suivi missions - vue adaptative"""
         bg_color = COUNTRY_COLORS.get(country, "#F5F5F5")
 
         flag_emoji = self.get_country_flag(country)
         country_frame = ttk.LabelFrame(
             self.suivi_planning_container,
             text=f"  {flag_emoji}  {country.upper()} ({len(missions)} missions)  ",
-            padding=10
+            padding=5
         )
-        country_frame.pack(fill="x", expand=False, pady=5)
+        country_frame.pack(fill="both", expand=True, pady=5, padx=5)
+
+        # Container pour le treeview avec scrollbars
+        tree_container = ttk.Frame(country_frame)
+        tree_container.pack(fill="both", expand=True)
 
         # Treeview avec colonnes incluant case à cocher
         columns = ("effectue", "heure", "type", "voyage", "nb_pal", "numero", "sst", "chauffeur", "ramasse", "infos")
-        tree = ttk.Treeview(country_frame, columns=columns, show="headings", height=min(10, len(missions)))
 
+        # Hauteur adaptative: min 5, max 15 lignes selon le contenu
+        tree_height = max(5, min(15, len(missions)))
+        tree = ttk.Treeview(tree_container, columns=columns, show="headings", height=tree_height)
+
+        # Configuration des colonnes avec largeurs proportionnelles
         col_config = [
-            ("effectue", "✅", 40),
-            ("heure", "Heure", 60),
-            ("type", "Type", 80),
-            ("voyage", "Voyage", 90),
-            ("nb_pal", "Nb Pal", 50),
-            ("numero", "N°", 40),
-            ("sst", "SST", 70),
-            ("chauffeur", "Chauffeur", 100),
-            ("ramasse", "Ramasse", 90),
-            ("infos", "Infos", 120)
+            ("effectue", "✅", 35, False),    # Fixe
+            ("heure", "Heure", 55, False),    # Fixe
+            ("type", "Type", 75, True),       # Extensible
+            ("voyage", "Voyage", 85, True),   # Extensible
+            ("nb_pal", "Pal", 40, False),     # Fixe
+            ("numero", "N°", 35, False),      # Fixe
+            ("sst", "SST", 60, True),         # Extensible
+            ("chauffeur", "Chauffeur", 110, True),  # Extensible
+            ("ramasse", "Ramasse", 100, True),     # Extensible
+            ("infos", "Infos", 150, True)     # Extensible
         ]
 
-        for col, txt, width in col_config:
+        for col, txt, width, stretch in col_config:
             tree.heading(col, text=txt)
-            tree.column(col, width=width, minwidth=30, stretch=True if col != "effectue" else False)
+            tree.column(col, width=width, minwidth=width-10, stretch=stretch)
 
-        vsb = ttk.Scrollbar(country_frame, orient="vertical", command=tree.yview)
-        tree.configure(yscrollcommand=vsb.set)
+        # Scrollbars vertical et horizontal
+        vsb = ttk.Scrollbar(tree_container, orient="vertical", command=tree.yview)
+        hsb = ttk.Scrollbar(tree_container, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
 
-        tree.pack(side="left", fill="both", expand=True)
-        vsb.pack(side="right", fill="y")
+        # Layout avec grid pour un meilleur redimensionnement
+        tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
+
+        tree_container.grid_rowconfigure(0, weight=1)
+        tree_container.grid_columnconfigure(0, weight=1)
 
         # Tags pour le style
         tree.tag_configure('done', background='#E8F5E9', foreground='#2E7D32')
@@ -4736,10 +4767,11 @@ class TransportPlannerApp:
         # Configuration du Gantt
         DRIVER_HEIGHT = 40
         HOUR_WIDTH = 100
-        LEFT_MARGIN = 150  # Pour les noms des chauffeurs
+        LEFT_MARGIN = 200  # Augmenté pour afficher SST
         TOP_MARGIN = 40    # Pour les heures
 
         # Collecter les chauffeurs uniques avec des missions ce jour
+        # Format: {chauffeur_nom: {"missions": [...], "sst": "..."}}
         drivers_with_missions = {}
         v_by_code = {v.get("code"): v for v in self.voyages}
 
@@ -4748,10 +4780,22 @@ class TransportPlannerApp:
             if m.get("sans_chauffeur", False):
                 chauffeur = "Sans chauffeur"
             if chauffeur not in drivers_with_missions:
-                drivers_with_missions[chauffeur] = []
-            drivers_with_missions[chauffeur].append(m)
+                # Récupérer le SST du chauffeur (de sa première mission)
+                sst = m.get("sst", "") if not m.get("sans_sst", False) else ""
+                drivers_with_missions[chauffeur] = {"missions": [], "sst": sst}
+            drivers_with_missions[chauffeur]["missions"].append(m)
 
-        drivers = sorted(drivers_with_missions.keys())
+        # Trier les chauffeurs selon l'option sélectionnée
+        sort_mode = getattr(self, 'gantt_sort_var', None)
+        sort_mode = sort_mode.get() if sort_mode else "Alphabétique"
+
+        if sort_mode == "SST":
+            # Trier par SST puis par nom
+            drivers = sorted(drivers_with_missions.keys(),
+                           key=lambda d: (drivers_with_missions[d]["sst"] or "ZZZ", d))
+        else:
+            # Tri alphabétique
+            drivers = sorted(drivers_with_missions.keys())
 
         # Dessiner les en-têtes d'heures (0h à 28h pour couvrir les heures tardives)
         for hour in range(0, 28):
@@ -4764,14 +4808,19 @@ class TransportPlannerApp:
         # Dessiner les lignes des chauffeurs
         for i, driver in enumerate(drivers):
             y = TOP_MARGIN + i * DRIVER_HEIGHT
+            driver_info = drivers_with_missions[driver]
+            sst = driver_info["sst"]
 
             # Fond alterné
             if i % 2 == 0:
                 canvas.create_rectangle(0, y, LEFT_MARGIN + 28 * HOUR_WIDTH, y + DRIVER_HEIGHT,
                                        fill='#FAFAFA', outline='')
 
-            # Nom du chauffeur
-            canvas.create_text(10, y + DRIVER_HEIGHT/2, text=driver,
+            # Nom du chauffeur avec SST
+            display_text = driver
+            if sst:
+                display_text = f"{driver} ({sst})"
+            canvas.create_text(10, y + DRIVER_HEIGHT/2, text=display_text,
                              anchor='w', font=('Arial', 9, 'bold'))
 
             # Ligne horizontale
@@ -4780,7 +4829,7 @@ class TransportPlannerApp:
                              fill='#E0E0E0')
 
             # Dessiner les barres des missions
-            for m in drivers_with_missions[driver]:
+            for m in driver_info["missions"]:
                 self.suivi_draw_gantt_bar(canvas, m, i, v_by_code,
                                           HOUR_WIDTH, DRIVER_HEIGHT, LEFT_MARGIN, TOP_MARGIN)
 
@@ -4790,7 +4839,7 @@ class TransportPlannerApp:
 
     def suivi_draw_gantt_bar(self, canvas, mission, driver_idx, v_by_code,
                              hour_width, driver_height, left_margin, top_margin):
-        """Dessiner une barre de mission dans le Gantt"""
+        """Dessiner une barre de mission dans le Gantt avec case à cocher"""
         try:
             heure_str = mission.get("heure", "08:00")
             h, m = map(int, heure_str.split(":"))
@@ -4822,10 +4871,33 @@ class TransportPlannerApp:
         # Dessiner la barre
         bar = canvas.create_rectangle(x1, y1, x2, y2, fill=fill_color, outline='#333333')
 
-        # Texte dans la barre
+        # Case à cocher à gauche de la barre
+        checkbox_size = 14
+        cb_x1 = x1 + 3
+        cb_y1 = (y1 + y2) / 2 - checkbox_size / 2
+        cb_x2 = cb_x1 + checkbox_size
+        cb_y2 = cb_y1 + checkbox_size
+
+        # Dessiner la case à cocher
+        checkbox = canvas.create_rectangle(cb_x1, cb_y1, cb_x2, cb_y2,
+                                          fill='white', outline='#333333', width=1)
+
+        # Si effectué, dessiner le coche
+        if is_done:
+            # Dessiner un coche vert
+            canvas.create_line(cb_x1 + 2, cb_y1 + checkbox_size/2,
+                             cb_x1 + checkbox_size/3, cb_y2 - 3,
+                             fill='#2E7D32', width=2)
+            canvas.create_line(cb_x1 + checkbox_size/3, cb_y2 - 3,
+                             cb_x2 - 2, cb_y1 + 3,
+                             fill='#2E7D32', width=2)
+
+        # Texte dans la barre (décalé à droite de la checkbox)
         text = f"{voyage_code}"
-        if x2 - x1 > 50:
-            canvas.create_text((x1 + x2) / 2, (y1 + y2) / 2, text=text,
+        text_x = cb_x2 + 5
+        bar_width = x2 - text_x
+        if bar_width > 30:
+            canvas.create_text(text_x + bar_width/2, (y1 + y2) / 2, text=text,
                              fill='white', font=('Arial', 8, 'bold'))
 
         # Tooltip au survol
@@ -4833,7 +4905,8 @@ class TransportPlannerApp:
             info = f"{mission.get('type')}: {voyage_code}\n"
             info += f"Heure: {heure_str}\n"
             info += f"Durée: {duree_minutes} min\n"
-            info += f"SST: {mission.get('sst', 'N/A')}"
+            info += f"SST: {mission.get('sst', 'N/A')}\n"
+            info += f"Statut: {'✔ Effectué' if is_done else '☐ En attente'}"
             # Créer un tooltip simple
             tooltip = canvas.create_text(event.x + 10, event.y - 10,
                                         text=info, anchor='nw',
@@ -4845,11 +4918,11 @@ class TransportPlannerApp:
         def hide_tooltip(event):
             canvas.delete('tooltip')
 
-        canvas.tag_bind(bar, '<Enter>', show_tooltip)
-        canvas.tag_bind(bar, '<Leave>', hide_tooltip)
-
-        # Clic pour basculer le statut
-        canvas.tag_bind(bar, '<Button-1>', lambda e, mid=mission["id"]: self.suivi_toggle_status(mid))
+        # Bindings pour la barre et la checkbox
+        for item in [bar, checkbox]:
+            canvas.tag_bind(item, '<Enter>', show_tooltip)
+            canvas.tag_bind(item, '<Leave>', hide_tooltip)
+            canvas.tag_bind(item, '<Button-1>', lambda e, mid=mission["id"]: self.suivi_toggle_status(mid))
 
     def open_view_by_driver(self):
         win = tk.Toplevel(self.root)
