@@ -6377,8 +6377,9 @@ class TransportPlannerApp:
         if not force_source:
             cached_missions = planning_cache.get_cached_planning(d)
             if cached_missions is not None:
-                print(f"[Cache] Planning {d} chargé depuis le cache ({len(cached_missions)} missions)")
-                self.missions = cached_missions
+                # Filtrer uniquement les missions valides (avec un id)
+                self.missions = [m for m in cached_missions if m and isinstance(m, dict) and "id" in m]
+                print(f"[Cache] Planning {d} chargé depuis le cache ({len(self.missions)} missions)")
                 # Compléter les chauffeur_id manquants
                 for data in self.missions:
                     if "chauffeur_nom" in data and "chauffeur_id" not in data:
@@ -6409,8 +6410,11 @@ class TransportPlannerApp:
             # Charger les missions depuis les fichiers JSON
             self.missions = []
             for file in day_dir.glob("*.json"):
+                # Ignorer les fichiers de métadonnées (commençant par _)
+                if file.name.startswith("_"):
+                    continue
                 data = load_json(file, None)
-                if not data:
+                if not data or not isinstance(data, dict) or "id" not in data:
                     continue
                 data["_path"] = file.as_posix()
 
