@@ -3772,7 +3772,7 @@ class TransportPlannerApp:
         voyages = []
         for v in raw:
             if isinstance(v, str):
-                voyages.append({"code": v, "type": "LIVRAISON", "actif": True, "country": "Belgique"})
+                voyages.append({"code": v, "type": "LIVRAISON", "actif": True, "country": "Belgique", "duree": 60})
             elif isinstance(v, dict):
                 voyages.append(
                     {
@@ -3780,6 +3780,7 @@ class TransportPlannerApp:
                         "type": v.get("type", "LIVRAISON"),
                         "actif": v.get("actif", True),
                         "country": v.get("country", "Belgique"),
+                        "duree": v.get("duree", 60),
                     }
                 )
         return voyages
@@ -7903,84 +7904,181 @@ class TransportPlannerApp:
         self.notebook.add(self.tab_voy, text="Tournées / Voyages")
 
         main = ttk.Frame(self.tab_voy)
-        main.pack(fill="both", expand=True, padx=5, pady=5)
+        main.pack(fill="both", expand=True, padx=10, pady=10)
 
-        lf_voy = ttk.LabelFrame(main, text="Codes voyages (Livraison & Ramasse)")
-        lf_voy.pack(side="top", fill="both", expand=True, padx=5, pady=5)
+        # === PANNEAU GAUCHE : Liste des voyages ===
+        left_frame = ttk.LabelFrame(main, text="Liste des codes voyages")
+        left_frame.pack(side="left", fill="both", expand=True, padx=(0, 10))
 
-        left = ttk.Frame(lf_voy)
-        left.pack(side="left", fill="both", expand=True, padx=(0, 5))
-        right = ttk.Frame(lf_voy)
-        right.pack(side="left", fill="both", expand=True, padx=(5, 0))
+        # Barre de recherche et filtres
+        search_frame = ttk.Frame(left_frame)
+        search_frame.pack(fill="x", padx=5, pady=5)
 
-        cols = ("code", "type", "actif", "country")
-        self.tree_voy = ttk.Treeview(left, columns=cols, show="headings", height=15, selectmode="extended")
-        self.tree_voy.heading("code", text="Code")
-        self.tree_voy.heading("type", text="Type")
-        self.tree_voy.heading("actif", text="Actif")
-        self.tree_voy.heading("country", text="Pays")
-        self.tree_voy.column("code", width=100)
-        self.tree_voy.column("type", width=100)
-        self.tree_voy.column("actif", width=50)
-        self.tree_voy.column("country", width=100)
-        self.tree_voy.pack(fill="both", expand=True)
+        ttk.Label(search_frame, text="🔍").pack(side="left")
+        self.voy_search_var = tk.StringVar()
+        self.voy_search_var.trace("w", lambda *args: self.filter_voyages_view())
+        search_entry = ttk.Entry(search_frame, textvariable=self.voy_search_var, width=15)
+        search_entry.pack(side="left", padx=(5, 10))
+
+        ttk.Label(search_frame, text="Type:").pack(side="left")
+        self.voy_filter_type_var = tk.StringVar(value="Tous")
+        filter_type_cb = ttk.Combobox(search_frame, textvariable=self.voy_filter_type_var,
+                                      values=["Tous", "LIVRAISON", "RAMASSE"], width=12, state="readonly")
+        filter_type_cb.pack(side="left", padx=5)
+        filter_type_cb.bind("<<ComboboxSelected>>", lambda e: self.filter_voyages_view())
+
+        ttk.Label(search_frame, text="Statut:").pack(side="left", padx=(10, 0))
+        self.voy_filter_actif_var = tk.StringVar(value="Tous")
+        filter_actif_cb = ttk.Combobox(search_frame, textvariable=self.voy_filter_actif_var,
+                                       values=["Tous", "Actifs", "Inactifs"], width=10, state="readonly")
+        filter_actif_cb.pack(side="left", padx=5)
+        filter_actif_cb.bind("<<ComboboxSelected>>", lambda e: self.filter_voyages_view())
+
+        # Compteur de voyages
+        self.voy_count_label = ttk.Label(search_frame, text="", foreground="gray")
+        self.voy_count_label.pack(side="right", padx=5)
+
+        # Treeview avec scrollbars
+        tree_frame = ttk.Frame(left_frame)
+        tree_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+        cols = ("code", "type", "actif", "country", "duree")
+        self.tree_voy = ttk.Treeview(tree_frame, columns=cols, show="headings", height=18, selectmode="browse")
+
+        # En-têtes cliquables pour tri
+        self.tree_voy.heading("code", text="Code ▼", command=lambda: self.sort_voyages_view("code"))
+        self.tree_voy.heading("type", text="Type", command=lambda: self.sort_voyages_view("type"))
+        self.tree_voy.heading("actif", text="Actif", command=lambda: self.sort_voyages_view("actif"))
+        self.tree_voy.heading("country", text="Pays", command=lambda: self.sort_voyages_view("country"))
+        self.tree_voy.heading("duree", text="Durée", command=lambda: self.sort_voyages_view("duree"))
+
+        self.tree_voy.column("code", width=120, minwidth=80)
+        self.tree_voy.column("type", width=100, minwidth=80)
+        self.tree_voy.column("actif", width=60, minwidth=50, anchor="center")
+        self.tree_voy.column("country", width=100, minwidth=80)
+        self.tree_voy.column("duree", width=70, minwidth=50, anchor="center")
+
+        # Scrollbars
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree_voy.yview)
+        hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=self.tree_voy.xview)
+        self.tree_voy.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+
+        self.tree_voy.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
+        tree_frame.grid_rowconfigure(0, weight=1)
+        tree_frame.grid_columnconfigure(0, weight=1)
 
         self.tree_voy.bind("<<TreeviewSelect>>", self.on_voy_select)
+        self.tree_voy.bind("<Double-1>", self.on_voy_select)
 
-        ttk.Label(right, text="Détails du voyage").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 5))
+        # Variable de tri
+        self.voy_sort_column = "code"
+        self.voy_sort_reverse = False
+
+        # === PANNEAU DROIT : Formulaire ===
+        right_frame = ttk.Frame(main, width=320)
+        right_frame.pack(side="right", fill="y", padx=(10, 0))
+        right_frame.pack_propagate(False)
+
+        # Titre dynamique du formulaire
+        self.voy_form_title_var = tk.StringVar(value="Nouveau voyage")
+        title_label = ttk.Label(right_frame, textvariable=self.voy_form_title_var, font=("Segoe UI", 12, "bold"))
+        title_label.pack(pady=(0, 15))
 
         self.voy_form_mode = None
         self.voy_form_existing = None
+
+        # === Section: Informations de base ===
+        info_frame = ttk.LabelFrame(right_frame, text="Informations de base")
+        info_frame.pack(fill="x", padx=5, pady=5)
 
         self.voy_code_var = tk.StringVar()
         self.voy_type_var = tk.StringVar(value="LIVRAISON")
         self.voy_actif_var = tk.BooleanVar(value=True)
 
+        row = 0
+        ttk.Label(info_frame, text="Code voyage *").grid(row=row, column=0, sticky="w", padx=5, pady=3)
+        self.voy_code_entry = ttk.Entry(info_frame, textvariable=self.voy_code_var, width=22)
+        self.voy_code_entry.grid(row=row, column=1, sticky="w", padx=5, pady=3)
+        row += 1
+
+        ttk.Label(info_frame, text="Type").grid(row=row, column=0, sticky="w", padx=5, pady=3)
+        self.voy_type_cb = ttk.Combobox(info_frame, textvariable=self.voy_type_var,
+                                        values=["LIVRAISON", "RAMASSE"], width=19, state="readonly")
+        self.voy_type_cb.grid(row=row, column=1, sticky="w", padx=5, pady=3)
+        row += 1
+
+        ttk.Label(info_frame, text="Statut").grid(row=row, column=0, sticky="w", padx=5, pady=3)
+        actif_frame = ttk.Frame(info_frame)
+        actif_frame.grid(row=row, column=1, sticky="w", padx=5, pady=3)
+        ttk.Checkbutton(actif_frame, text="Actif", variable=self.voy_actif_var).pack(side="left")
+
+        # === Section: Localisation ===
+        loc_frame = ttk.LabelFrame(right_frame, text="Localisation")
+        loc_frame.pack(fill="x", padx=5, pady=5)
+
         self.voy_foreign_var = tk.BooleanVar(value=False)
         self.voy_country_var = tk.StringVar(value="Belgique")
-        self.voy_duree_var = tk.StringVar(value="60")  # Durée par défaut: 60 minutes
 
-        row = 1
-        ttk.Label(right, text="Code :").grid(row=row, column=0, sticky="w")
-        ttk.Entry(right, textvariable=self.voy_code_var, width=20).grid(row=row, column=1, sticky="w")
+        row = 0
+        ttk.Label(loc_frame, text="Destination").grid(row=row, column=0, sticky="w", padx=5, pady=3)
+        dest_frame = ttk.Frame(loc_frame)
+        dest_frame.grid(row=row, column=1, sticky="w", padx=5, pady=3)
+        ttk.Radiobutton(dest_frame, text="Belgique", variable=self.voy_foreign_var,
+                        value=False, command=self.on_voy_foreign_toggle).pack(side="left")
+        ttk.Radiobutton(dest_frame, text="Étranger", variable=self.voy_foreign_var,
+                        value=True, command=self.on_voy_foreign_toggle).pack(side="left", padx=(10, 0))
         row += 1
 
-        ttk.Label(right, text="Type :").grid(row=row, column=0, sticky="w")
-        ttk.Combobox(right, textvariable=self.voy_type_var,
-                     values=["LIVRAISON", "RAMASSE"], width=18, state="readonly").grid(
-            row=row, column=1, sticky="w"
-        )
-        row += 1
+        ttk.Label(loc_frame, text="Pays").grid(row=row, column=0, sticky="w", padx=5, pady=3)
+        self.voy_country_cb = ttk.Combobox(loc_frame, textvariable=self.voy_country_var,
+                                           values=[c for c in EU_COUNTRIES if c != "Belgique"],
+                                           state="disabled", width=19)
+        self.voy_country_cb.grid(row=row, column=1, sticky="w", padx=5, pady=3)
 
-        ttk.Checkbutton(right, text="Actif", variable=self.voy_actif_var).grid(row=row, column=0, sticky="w")
-        
-        ttk.Checkbutton(right, text="Hors Belgique", variable=self.voy_foreign_var, command=self.on_voy_foreign_toggle).grid(row=row, column=1, sticky="w")
-        row += 1
-        
-        ttk.Label(right, text="Pays UE :").grid(row=row, column=0, sticky="w")
-        self.voy_country_cb = ttk.Combobox(right, textvariable=self.voy_country_var,
-                                           values=[c for c in EU_COUNTRIES if c!="Belgique"],
-                                           state="disabled", width=18)
-        self.voy_country_cb.grid(row=row, column=1, sticky="w")
-        row += 1
+        # === Section: Paramètres ===
+        param_frame = ttk.LabelFrame(right_frame, text="Paramètres")
+        param_frame.pack(fill="x", padx=5, pady=5)
 
-        ttk.Label(right, text="Durée (min) :").grid(row=row, column=0, sticky="w")
-        duree_frame = ttk.Frame(right)
-        duree_frame.grid(row=row, column=1, sticky="w")
-        self.voy_duree_entry = ttk.Entry(duree_frame, textvariable=self.voy_duree_var, width=8)
+        self.voy_duree_var = tk.StringVar(value="60")
+
+        ttk.Label(param_frame, text="Durée estimée").grid(row=0, column=0, sticky="w", padx=5, pady=3)
+        duree_inner = ttk.Frame(param_frame)
+        duree_inner.grid(row=0, column=1, sticky="w", padx=5, pady=3)
+        self.voy_duree_entry = ttk.Entry(duree_inner, textvariable=self.voy_duree_var, width=8)
         self.voy_duree_entry.pack(side="left")
-        ttk.Label(duree_frame, text="min (ex: 60, 90, 120...)", foreground="gray").pack(side="left", padx=5)
-        row += 1
+        ttk.Label(duree_inner, text="min", foreground="gray").pack(side="left", padx=5)
 
-        btnf = ttk.Frame(right)
-        btnf.grid(row=row, column=0, columnspan=2, pady=5, sticky="e")
-        ttk.Button(btnf, text="Nouveau", command=self.on_voy_new).pack(side="left", padx=2)
-        ttk.Button(btnf, text="Enregistrer", command=self.on_voy_save).pack(side="left", padx=2)
-        ttk.Button(btnf, text="Annuler", command=self.on_voy_cancel).pack(side="left", padx=2)
+        # === Boutons d'action ===
+        btn_frame = ttk.Frame(right_frame)
+        btn_frame.pack(fill="x", padx=5, pady=15)
+
+        # Boutons principaux
+        main_btn_frame = ttk.Frame(btn_frame)
+        main_btn_frame.pack(fill="x")
+
+        self.voy_save_btn = ttk.Button(main_btn_frame, text="💾 Enregistrer", command=self.on_voy_save, width=15)
+        self.voy_save_btn.pack(side="left", padx=2)
+
+        ttk.Button(main_btn_frame, text="🔄 Nouveau", command=self.on_voy_new, width=12).pack(side="left", padx=2)
+        ttk.Button(main_btn_frame, text="↩ Annuler", command=self.on_voy_cancel, width=10).pack(side="left", padx=2)
+
+        # Bouton suppression (séparé pour éviter les clics accidentels)
+        del_frame = ttk.Frame(btn_frame)
+        del_frame.pack(fill="x", pady=(10, 0))
+
+        self.voy_delete_btn = ttk.Button(del_frame, text="🗑 Supprimer", command=self.on_voy_delete, width=12)
+        self.voy_delete_btn.pack(side="right")
+        self.voy_delete_btn.configure(state="disabled")
+
+        # Note en bas
+        note_label = ttk.Label(right_frame, text="* Champ obligatoire", foreground="gray", font=("Segoe UI", 8))
+        note_label.pack(side="bottom", pady=5)
 
         self.refresh_voyages_view()
         self.on_voy_new()
-        
+
         for widget in [self.voy_code_var, self.voy_type_var, self.voy_country_cb]:
             if hasattr(widget, 'trace'):
                 widget.trace('w', lambda *args: self.set_user_editing(True))
@@ -7994,8 +8092,27 @@ class TransportPlannerApp:
             sel_before = cur_sel[0]
         for row in self.tree_voy.get_children():
             self.tree_voy.delete(row)
-        for v in self.voyages:
+
+        # Appliquer les filtres
+        filtered = self.get_filtered_voyages()
+
+        # Appliquer le tri
+        sort_col = getattr(self, 'voy_sort_column', 'code')
+        reverse = getattr(self, 'voy_sort_reverse', False)
+
+        def sort_key(v):
+            val = v.get(sort_col, "")
+            if sort_col == "actif":
+                return 0 if v.get("actif", True) else 1
+            if sort_col == "duree":
+                return v.get("duree", 60)
+            return str(val).lower()
+
+        filtered.sort(key=sort_key, reverse=reverse)
+
+        for v in filtered:
             code = v.get("code", "")
+            duree = v.get("duree", 60)
             self.tree_voy.insert(
                 "",
                 "end",
@@ -8005,10 +8122,115 @@ class TransportPlannerApp:
                     v.get("type", "LIVRAISON"),
                     "Oui" if v.get("actif", True) else "Non",
                     v.get("country", "Belgique"),
+                    f"{duree} min",
                 ),
             )
         if sel_before and sel_before in self.tree_voy.get_children(""):
             self.tree_voy.selection_set(sel_before)
+
+        # Mettre à jour le compteur
+        if hasattr(self, 'voy_count_label'):
+            total = len(self.voyages)
+            shown = len(filtered)
+            if total == shown:
+                self.voy_count_label.config(text=f"{total} voyage(s)")
+            else:
+                self.voy_count_label.config(text=f"{shown}/{total} voyage(s)")
+
+    def get_filtered_voyages(self):
+        """Retourne la liste des voyages filtrés selon les critères de recherche."""
+        if not hasattr(self, 'voy_search_var'):
+            return list(self.voyages)
+
+        search_text = self.voy_search_var.get().strip().lower()
+        filter_type = getattr(self, 'voy_filter_type_var', tk.StringVar()).get()
+        filter_actif = getattr(self, 'voy_filter_actif_var', tk.StringVar()).get()
+
+        filtered = []
+        for v in self.voyages:
+            # Filtre par recherche texte
+            if search_text:
+                code = v.get("code", "").lower()
+                country = v.get("country", "").lower()
+                if search_text not in code and search_text not in country:
+                    continue
+
+            # Filtre par type
+            if filter_type != "Tous" and v.get("type", "LIVRAISON") != filter_type:
+                continue
+
+            # Filtre par statut actif
+            if filter_actif == "Actifs" and not v.get("actif", True):
+                continue
+            if filter_actif == "Inactifs" and v.get("actif", True):
+                continue
+
+            filtered.append(v)
+
+        return filtered
+
+    def filter_voyages_view(self):
+        """Rafraîchit la vue avec les filtres appliqués."""
+        self.refresh_voyages_view()
+
+    def sort_voyages_view(self, column):
+        """Trie la liste des voyages par la colonne spécifiée."""
+        if not hasattr(self, 'tree_voy'):
+            return
+
+        # Toggle l'ordre si on clique sur la même colonne
+        if getattr(self, 'voy_sort_column', None) == column:
+            self.voy_sort_reverse = not getattr(self, 'voy_sort_reverse', False)
+        else:
+            self.voy_sort_column = column
+            self.voy_sort_reverse = False
+
+        # Mettre à jour les en-têtes
+        cols = {"code": "Code", "type": "Type", "actif": "Actif", "country": "Pays", "duree": "Durée"}
+        for col, text in cols.items():
+            if col == column:
+                arrow = "▼" if self.voy_sort_reverse else "▲"
+                self.tree_voy.heading(col, text=f"{text} {arrow}")
+            else:
+                self.tree_voy.heading(col, text=text)
+
+        self.refresh_voyages_view()
+
+    def on_voy_delete(self):
+        """Supprime le voyage sélectionné après confirmation."""
+        if self.voy_form_mode != "edit" or self.voy_form_existing is None:
+            messagebox.showwarning("Attention", "Veuillez d'abord sélectionner un voyage à supprimer.")
+            return
+
+        code = self.voy_form_existing.get("code", "")
+        if not code:
+            return
+
+        # Confirmation
+        result = messagebox.askyesno(
+            "Confirmer la suppression",
+            f"Êtes-vous sûr de vouloir supprimer le voyage '{code}' ?\n\n"
+            "Cette action est irréversible.",
+            icon="warning"
+        )
+
+        if not result:
+            return
+
+        # Supprimer le voyage
+        self.voyages = [v for v in self.voyages if v.get("code") != code]
+
+        # Logger la suppression
+        activity_logger.log_action("VOYAGE_DELETE", {
+            "code": code,
+            "type": self.voy_form_existing.get("type"),
+            "country": self.voy_form_existing.get("country"),
+        })
+
+        self.save_voyages_data()
+        self.refresh_voyages_view()
+        self.on_voy_new()
+        messagebox.showinfo("Info", f"Le voyage '{code}' a été supprimé.")
 
     
     def on_voy_foreign_toggle(self):
@@ -8025,6 +8247,15 @@ class TransportPlannerApp:
     def on_voy_new(self):
         self.voy_form_mode = "add"
         self.voy_form_existing = None
+
+        # Mettre à jour le titre du formulaire
+        if hasattr(self, 'voy_form_title_var'):
+            self.voy_form_title_var.set("Nouveau voyage")
+
+        # Désactiver le bouton de suppression
+        if hasattr(self, 'voy_delete_btn'):
+            self.voy_delete_btn.configure(state="disabled")
+
         if hasattr(self, 'voy_foreign_var'):
             self.voy_foreign_var.set(False)
             self.voy_country_var.set('Belgique')
@@ -8053,10 +8284,19 @@ class TransportPlannerApp:
             return
         self.voy_form_mode = "edit"
         self.voy_form_existing = v
+
+        # Mettre à jour le titre du formulaire
+        if hasattr(self, 'voy_form_title_var'):
+            self.voy_form_title_var.set(f"Modifier : {code}")
+
+        # Activer le bouton de suppression
+        if hasattr(self, 'voy_delete_btn'):
+            self.voy_delete_btn.configure(state="normal")
+
         self.voy_code_var.set(v.get("code", ""))
         self.voy_type_var.set(v.get("type", "LIVRAISON"))
         self.voy_actif_var.set(bool(v.get("actif", True)))
-        country = v.get('country','Belgique')
+        country = v.get('country', 'Belgique')
         is_foreign = (country != 'Belgique')
         if hasattr(self, 'voy_foreign_var'):
             self.voy_foreign_var.set(is_foreign)
