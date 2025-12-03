@@ -7012,38 +7012,106 @@ class TransportPlannerApp:
         self.notebook.add(self.tab_ch, text="Chauffeurs")
 
         main_frame = ttk.Frame(self.tab_ch)
-        main_frame.pack(fill="both", expand=True, padx=5, pady=5)
+        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
-        left = ttk.Frame(main_frame)
-        left.pack(side="left", fill="both", expand=True)
-        right = ttk.Frame(main_frame)
-        right.pack(side="left", fill="both", expand=True)
+        # === PANNEAU GAUCHE : Liste des chauffeurs ===
+        left_frame = ttk.LabelFrame(main_frame, text="Liste des chauffeurs")
+        left_frame.pack(side="left", fill="both", expand=True, padx=(0, 10))
 
-        ttk.Label(left, text="Liste des chauffeurs (Ctrl+clic pour sélection multiple)").pack(anchor="w")
+        # Barre de recherche et filtres
+        search_frame = ttk.Frame(left_frame)
+        search_frame.pack(fill="x", padx=5, pady=5)
+
+        ttk.Label(search_frame, text="🔍").pack(side="left")
+        self.ch_search_var = tk.StringVar()
+        self.ch_search_var.trace("w", lambda *args: self.filter_chauffeurs_view())
+        search_entry = ttk.Entry(search_frame, textvariable=self.ch_search_var, width=15)
+        search_entry.pack(side="left", padx=(5, 10))
+
+        ttk.Label(search_frame, text="Type:").pack(side="left")
+        self.ch_filter_type_var = tk.StringVar(value="Tous")
+        filter_type_cb = ttk.Combobox(search_frame, textvariable=self.ch_filter_type_var,
+                                      values=["Tous", "interne", "externe"], width=10, state="readonly")
+        filter_type_cb.pack(side="left", padx=5)
+        filter_type_cb.bind("<<ComboboxSelected>>", lambda e: self.filter_chauffeurs_view())
+
+        ttk.Label(search_frame, text="Statut:").pack(side="left", padx=(10, 0))
+        self.ch_filter_actif_var = tk.StringVar(value="Actifs")
+        filter_actif_cb = ttk.Combobox(search_frame, textvariable=self.ch_filter_actif_var,
+                                       values=["Tous", "Actifs", "Inactifs"], width=10, state="readonly")
+        filter_actif_cb.pack(side="left", padx=5)
+        filter_actif_cb.bind("<<ComboboxSelected>>", lambda e: self.filter_chauffeurs_view())
+
+        ttk.Label(search_frame, text="SST:").pack(side="left", padx=(10, 0))
+        self.ch_filter_sst_var = tk.StringVar(value="Tous")
+        sst_values = ["Tous"] + (self.sst_list if self.sst_list else [])
+        filter_sst_cb = ttk.Combobox(search_frame, textvariable=self.ch_filter_sst_var,
+                                     values=sst_values, width=12, state="readonly")
+        filter_sst_cb.pack(side="left", padx=5)
+        filter_sst_cb.bind("<<ComboboxSelected>>", lambda e: self.filter_chauffeurs_view())
+
+        # Compteur de chauffeurs
+        self.ch_count_label = ttk.Label(search_frame, text="", foreground="gray")
+        self.ch_count_label.pack(side="right", padx=5)
+
+        # Instruction sélection multiple
+        ttk.Label(left_frame, text="💡 Ctrl+clic pour sélection multiple",
+                  foreground="gray", font=("Segoe UI", 8)).pack(anchor="w", padx=5)
+
+        # Treeview avec scrollbar
+        tree_frame = ttk.Frame(left_frame)
+        tree_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
         cols = ("id", "nom", "prenom", "sst", "type", "actif")
-        self.tree_ch = ttk.Treeview(left, columns=cols, show="headings", height=20, selectmode="extended")
-        headers = ["ID", "Nom", "Prénom", "SST", "Type", "Actif"]
-        for c, h in zip(cols, headers):
-            self.tree_ch.heading(c, text=h)
-            self.tree_ch.column(c, width=80)
-        self.tree_ch.pack(fill="both", expand=True)
+        self.tree_ch = ttk.Treeview(tree_frame, columns=cols, show="headings", height=18, selectmode="extended")
+
+        # En-têtes cliquables pour tri
+        self.tree_ch.heading("id", text="ID", command=lambda: self.sort_chauffeurs_view("id"))
+        self.tree_ch.heading("nom", text="Nom ▼", command=lambda: self.sort_chauffeurs_view("nom"))
+        self.tree_ch.heading("prenom", text="Prénom", command=lambda: self.sort_chauffeurs_view("prenom"))
+        self.tree_ch.heading("sst", text="SST", command=lambda: self.sort_chauffeurs_view("sst"))
+        self.tree_ch.heading("type", text="Type", command=lambda: self.sort_chauffeurs_view("type"))
+        self.tree_ch.heading("actif", text="Actif", command=lambda: self.sort_chauffeurs_view("actif"))
+
+        self.tree_ch.column("id", width=100, minwidth=80)
+        self.tree_ch.column("nom", width=120, minwidth=80)
+        self.tree_ch.column("prenom", width=100, minwidth=80)
+        self.tree_ch.column("sst", width=100, minwidth=80)
+        self.tree_ch.column("type", width=80, minwidth=60, anchor="center")
+        self.tree_ch.column("actif", width=60, minwidth=50, anchor="center")
+
+        # Scrollbar
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree_ch.yview)
+        self.tree_ch.configure(yscrollcommand=vsb.set)
+
+        self.tree_ch.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        tree_frame.grid_rowconfigure(0, weight=1)
+        tree_frame.grid_columnconfigure(0, weight=1)
+
+        # Variable de tri
+        self.ch_sort_column = "nom"
+        self.ch_sort_reverse = False
+
         self.refresh_chauffeurs_view()
 
+        # Boutons d'action
         perms = self.rights["permissions"]
-        btn_frame = ttk.Frame(left)
-        btn_frame.pack(fill="x", pady=5)
+        btn_frame = ttk.Frame(left_frame)
+        btn_frame.pack(fill="x", padx=5, pady=5)
         if perms["manage_drivers"]:
-            ttk.Button(btn_frame, text="Ajouter", command=self.on_add_chauffeur).pack(side="left")
-            ttk.Button(btn_frame, text="Modifier", command=self.on_edit_chauffeur).pack(side="left", padx=5)
-            ttk.Button(btn_frame, text="Ajouter SST", command=self.on_add_sst).pack(side="left", padx=5)
+            ttk.Button(btn_frame, text="➕ Ajouter", command=self.on_add_chauffeur, width=12).pack(side="left", padx=2)
+            ttk.Button(btn_frame, text="✏️ Modifier", command=self.on_edit_chauffeur, width=12).pack(side="left", padx=2)
+            ttk.Button(btn_frame, text="🏢 Ajouter SST", command=self.on_add_sst, width=14).pack(side="left", padx=2)
         if perms["edit_driver_planning"]:
-            ttk.Button(btn_frame, text="Activer/Désactiver", command=self.on_toggle_chauffeur).pack(
-                side="left", padx=5
+            ttk.Button(btn_frame, text="🔄 Activer/Désactiver", command=self.on_toggle_chauffeur, width=18).pack(
+                side="left", padx=2
             )
 
-        ttk.Label(right, text="📅 Planning / disponibilités du chauffeur", 
-                 font=("Arial", 11, "bold")).pack(anchor="w", pady=(0,5))
-        
+        # === PANNEAU DROIT : Planning / disponibilités ===
+        right = ttk.LabelFrame(main_frame, text="📅 Planning / disponibilités du chauffeur")
+        right.pack(side="left", fill="both", expand=True)
+
         select_frame = ttk.Frame(right)
         select_frame.pack(fill="x", pady=5)
         ttk.Label(select_frame, text="ID chauffeur :").pack(side="left")
@@ -7133,16 +7201,32 @@ class TransportPlannerApp:
     def refresh_chauffeurs_view(self):
         if not hasattr(self, "tree_ch"):
             return
-        
+
         selected = None
         if hasattr(self, "tree_ch"):
             sel = self.tree_ch.selection()
             if sel:
                 selected = sel[0]
-                
+
         for row in self.tree_ch.get_children():
             self.tree_ch.delete(row)
-        for ch in self.chauffeurs:
+
+        # Appliquer les filtres
+        filtered = self.get_filtered_chauffeurs()
+
+        # Appliquer le tri
+        sort_col = getattr(self, 'ch_sort_column', 'nom')
+        reverse = getattr(self, 'ch_sort_reverse', False)
+
+        def sort_key(ch):
+            val = ch.get(sort_col, "")
+            if sort_col == "actif":
+                return 0 if ch.get("actif", True) else 1
+            return str(val).lower()
+
+        filtered.sort(key=sort_key, reverse=reverse)
+
+        for ch in filtered:
             self.tree_ch.insert(
                 "",
                 "end",
@@ -7156,10 +7240,84 @@ class TransportPlannerApp:
                     "Oui" if ch.get("actif", True) else "Non",
                 ),
             )
-        
+
         if selected and selected in self.tree_ch.get_children(""):
             self.tree_ch.selection_set(selected)
             self.tree_ch.see(selected)
+
+        # Mettre à jour le compteur
+        if hasattr(self, 'ch_count_label'):
+            total = len(self.chauffeurs)
+            shown = len(filtered)
+            if total == shown:
+                self.ch_count_label.config(text=f"{total} chauffeur(s)")
+            else:
+                self.ch_count_label.config(text=f"{shown}/{total} chauffeur(s)")
+
+    def get_filtered_chauffeurs(self):
+        """Retourne la liste des chauffeurs filtrés selon les critères de recherche."""
+        if not hasattr(self, 'ch_search_var'):
+            return list(self.chauffeurs)
+
+        search_text = self.ch_search_var.get().strip().lower()
+        filter_type = getattr(self, 'ch_filter_type_var', tk.StringVar()).get()
+        filter_actif = getattr(self, 'ch_filter_actif_var', tk.StringVar()).get()
+        filter_sst = getattr(self, 'ch_filter_sst_var', tk.StringVar()).get()
+
+        filtered = []
+        for ch in self.chauffeurs:
+            # Filtre par recherche texte (nom, prénom, ID)
+            if search_text:
+                nom = ch.get("nom", "").lower()
+                prenom = ch.get("prenom", "").lower()
+                cid = ch.get("id", "").lower()
+                if search_text not in nom and search_text not in prenom and search_text not in cid:
+                    continue
+
+            # Filtre par type
+            if filter_type != "Tous" and ch.get("type", "") != filter_type:
+                continue
+
+            # Filtre par statut actif
+            if filter_actif == "Actifs" and not ch.get("actif", True):
+                continue
+            if filter_actif == "Inactifs" and ch.get("actif", True):
+                continue
+
+            # Filtre par SST
+            if filter_sst != "Tous" and ch.get("sst", "") != filter_sst:
+                continue
+
+            filtered.append(ch)
+
+        return filtered
+
+    def filter_chauffeurs_view(self):
+        """Rafraîchit la vue avec les filtres appliqués."""
+        self.refresh_chauffeurs_view()
+
+    def sort_chauffeurs_view(self, column):
+        """Trie la liste des chauffeurs par la colonne spécifiée."""
+        if not hasattr(self, 'tree_ch'):
+            return
+
+        # Toggle l'ordre si on clique sur la même colonne
+        if getattr(self, 'ch_sort_column', None) == column:
+            self.ch_sort_reverse = not getattr(self, 'ch_sort_reverse', False)
+        else:
+            self.ch_sort_column = column
+            self.ch_sort_reverse = False
+
+        # Mettre à jour les en-têtes
+        cols = {"id": "ID", "nom": "Nom", "prenom": "Prénom", "sst": "SST", "type": "Type", "actif": "Actif"}
+        for col, text in cols.items():
+            if col == column:
+                arrow = "▼" if self.ch_sort_reverse else "▲"
+                self.tree_ch.heading(col, text=f"{text} {arrow}")
+            else:
+                self.tree_ch.heading(col, text=text)
+
+        self.refresh_chauffeurs_view()
 
     def on_add_chauffeur(self):
         self.set_user_editing(True)
@@ -7221,8 +7379,10 @@ class TransportPlannerApp:
         win = tk.Toplevel(self.root)
         win.transient(self.root)
         win.grab_set()
-        win.title("Chauffeur")
+        win.title("Nouveau chauffeur" if not existing else f"Modifier : {existing.get('nom', '')} {existing.get('prenom', '')}")
+        win.resizable(False, False)
 
+        # Variables
         id_var = tk.StringVar(value=existing.get("id") if existing else "")
         nom_var = tk.StringVar(value=existing.get("nom") if existing else "")
         prenom_var = tk.StringVar(value=existing.get("prenom") if existing else "")
@@ -7233,40 +7393,72 @@ class TransportPlannerApp:
         tel_var = tk.StringVar(value=existing.get("telephone") if existing else "")
         actif_var = tk.BooleanVar(value=existing.get("actif", True) if existing else True)
 
+        # Frame principal avec padding
+        main_frame = ttk.Frame(win, padding=15)
+        main_frame.pack(fill="both", expand=True)
+
+        # === Section: Informations personnelles ===
+        info_frame = ttk.LabelFrame(main_frame, text="Informations personnelles", padding=10)
+        info_frame.pack(fill="x", pady=(0, 10))
+
         row = 0
-        ttk.Label(win, text="ID (laisser vide pour auto) :").grid(row=row, column=0, sticky="w")
-        ttk.Entry(win, textvariable=id_var, width=15).grid(row=row, column=1, sticky="w")
+        ttk.Label(info_frame, text="Nom *").grid(row=row, column=0, sticky="w", padx=5, pady=5)
+        nom_entry = ttk.Entry(info_frame, textvariable=nom_var, width=25)
+        nom_entry.grid(row=row, column=1, sticky="w", padx=5, pady=5)
+        nom_entry.focus_set()
         row += 1
 
-        ttk.Label(win, text="Nom :").grid(row=row, column=0, sticky="w")
-        ttk.Entry(win, textvariable=nom_var, width=20).grid(row=row, column=1, sticky="w")
+        ttk.Label(info_frame, text="Prénom").grid(row=row, column=0, sticky="w", padx=5, pady=5)
+        ttk.Entry(info_frame, textvariable=prenom_var, width=25).grid(row=row, column=1, sticky="w", padx=5, pady=5)
         row += 1
 
-        ttk.Label(win, text="Prénom :").grid(row=row, column=0, sticky="w")
-        ttk.Entry(win, textvariable=prenom_var, width=20).grid(row=row, column=1, sticky="w")
+        ttk.Label(info_frame, text="Téléphone").grid(row=row, column=0, sticky="w", padx=5, pady=5)
+        ttk.Entry(info_frame, textvariable=tel_var, width=25).grid(row=row, column=1, sticky="w", padx=5, pady=5)
+
+        # === Section: Paramètres professionnels ===
+        pro_frame = ttk.LabelFrame(main_frame, text="Paramètres professionnels", padding=10)
+        pro_frame.pack(fill="x", pady=(0, 10))
+
+        row = 0
+        ttk.Label(pro_frame, text="Type").grid(row=row, column=0, sticky="w", padx=5, pady=5)
+        type_frame = ttk.Frame(pro_frame)
+        type_frame.grid(row=row, column=1, sticky="w", padx=5, pady=5)
+        ttk.Radiobutton(type_frame, text="Interne", variable=type_var, value="interne").pack(side="left")
+        ttk.Radiobutton(type_frame, text="Externe", variable=type_var, value="externe").pack(side="left", padx=(15, 0))
         row += 1
 
-        ttk.Label(win, text="SST :").grid(row=row, column=0, sticky="w")
-        ttk.Combobox(win, textvariable=sst_var, values=self.sst_list, width=15).grid(row=row, column=1, sticky="w")
+        ttk.Label(pro_frame, text="Sous-traitant (SST)").grid(row=row, column=0, sticky="w", padx=5, pady=5)
+        sst_cb = ttk.Combobox(pro_frame, textvariable=sst_var, values=self.sst_list, width=22)
+        sst_cb.grid(row=row, column=1, sticky="w", padx=5, pady=5)
         row += 1
 
-        ttk.Label(win, text="Type :").grid(row=row, column=0, sticky="w")
-        ttk.Combobox(win, textvariable=type_var, values=["interne", "externe"], width=10).grid(
-            row=row, column=1, sticky="w"
-        )
-        row += 1
+        ttk.Label(pro_frame, text="Statut").grid(row=row, column=0, sticky="w", padx=5, pady=5)
+        actif_frame = ttk.Frame(pro_frame)
+        actif_frame.grid(row=row, column=1, sticky="w", padx=5, pady=5)
+        ttk.Checkbutton(actif_frame, text="Actif", variable=actif_var).pack(side="left")
 
-        ttk.Label(win, text="Téléphone :").grid(row=row, column=0, sticky="w")
-        ttk.Entry(win, textvariable=tel_var, width=20).grid(row=row, column=1, sticky="w")
-        row += 1
+        # === Section: Paramètres techniques (collapsée par défaut pour les utilisateurs) ===
+        tech_frame = ttk.LabelFrame(main_frame, text="Paramètres techniques", padding=10)
+        tech_frame.pack(fill="x", pady=(0, 10))
 
-        ttk.Checkbutton(win, text="Actif", variable=actif_var).grid(row=row, column=0, sticky="w")
-        row += 1
+        ttk.Label(tech_frame, text="ID (auto si vide)").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        id_entry = ttk.Entry(tech_frame, textvariable=id_var, width=18)
+        id_entry.grid(row=0, column=1, sticky="w", padx=5, pady=5)
+        if existing:
+            id_entry.configure(state="readonly")
+
+        # === Boutons d'action ===
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(fill="x", pady=(10, 0))
+
+        # Note champs obligatoires
+        ttk.Label(btn_frame, text="* Champ obligatoire", foreground="gray", font=("Segoe UI", 8)).pack(side="left")
 
         def on_ok():
             nom = nom_var.get().strip()
             if not nom:
-                messagebox.showerror("Erreur", "Nom obligatoire.")
+                messagebox.showerror("Erreur", "Le nom est obligatoire.")
+                nom_entry.focus_set()
                 return
             cid = id_var.get().strip()
             if not cid:
@@ -7309,13 +7501,17 @@ class TransportPlannerApp:
             self.refresh_chauffeurs_view()
             self.set_user_editing(False)
             win.destroy()
-            
+
         def on_cancel():
             self.set_user_editing(False)
             win.destroy()
 
-        ttk.Button(win, text="OK", command=on_ok).grid(row=row, column=1, pady=5, sticky="e")
-        ttk.Button(win, text="Annuler", command=on_cancel).grid(row=row, column=0, pady=5, sticky="w")
+        ttk.Button(btn_frame, text="↩ Annuler", command=on_cancel, width=12).pack(side="right", padx=(5, 0))
+        ttk.Button(btn_frame, text="💾 Enregistrer", command=on_ok, width=14).pack(side="right")
+
+        # Raccourcis clavier
+        win.bind("<Return>", lambda e: on_ok())
+        win.bind("<Escape>", lambda e: on_cancel())
 
     def on_select_chauffeur(self, event):
         sel = self.tree_ch.selection()
