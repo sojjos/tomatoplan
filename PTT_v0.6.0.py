@@ -19,6 +19,9 @@ VOYAGES_FILE = DATA_DIR / "voyages.json"
 CHAUFFEURS_FILE = DATA_DIR / "chauffeurs.json"
 TARIFS_SST_FILE = DATA_DIR / "tarifs_sst.json"
 REVENUS_FILE = DATA_DIR / "revenus_palettes.json"
+SST_EMAILS_FILE = DATA_DIR / "sst_emails.json"
+ANNOUNCEMENT_CONFIG_FILE = DATA_DIR / "announcement_config.json"
+ANNOUNCEMENT_HISTORY_FILE = DATA_DIR / "announcement_history.json"
 
 from datetime import date, datetime, timedelta
 import uuid
@@ -53,6 +56,13 @@ try:
     MATPLOTLIB_AVAILABLE = True
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
+
+# Import Outlook (Windows uniquement)
+try:
+    import win32com.client
+    OUTLOOK_AVAILABLE = True
+except ImportError:
+    OUTLOOK_AVAILABLE = False
 
 # Configuration
 COMPANY_OD_FOLDER = "OneDrive - STEF"
@@ -452,6 +462,8 @@ def init_default_data():
                     "manage_finance": False,
                     "view_analyse": False,
                     "view_sauron": False,
+                    "send_announcements": False,
+                    "manage_announcements_config": False,
                 },
                 "planner": {
                     "view_planning": True,
@@ -468,6 +480,8 @@ def init_default_data():
                     "manage_finance": False,
                     "view_analyse": False,
                     "view_sauron": False,
+                    "send_announcements": True,
+                    "manage_announcements_config": False,
                 },
                 "planner_advanced": {
                     "view_planning": True,
@@ -484,6 +498,8 @@ def init_default_data():
                     "manage_finance": False,
                     "view_analyse": False,
                     "view_sauron": False,
+                    "send_announcements": True,
+                    "manage_announcements_config": True,
                 },
                 "driver_admin": {
                     "view_planning": True,
@@ -500,6 +516,8 @@ def init_default_data():
                     "manage_finance": False,
                     "view_analyse": False,
                     "view_sauron": False,
+                    "send_announcements": False,
+                    "manage_announcements_config": False,
                 },
                 "admin": {
                     "view_planning": True,
@@ -516,6 +534,8 @@ def init_default_data():
                     "manage_finance": True,
                     "view_analyse": True,
                     "view_sauron": True,
+                    "send_announcements": True,
+                    "manage_announcements_config": True,
                 },
                 "analyse": {
                     "view_planning": True,
@@ -532,6 +552,8 @@ def init_default_data():
                     "manage_finance": False,
                     "view_analyse": True,
                     "view_sauron": False,
+                    "send_announcements": False,
+                    "manage_announcements_config": False,
                 },
                 "finance": {
                     "view_planning": True,
@@ -548,6 +570,8 @@ def init_default_data():
                     "manage_finance": True,
                     "view_analyse": False,
                     "view_sauron": False,
+                    "send_announcements": False,
+                    "manage_announcements_config": False,
                 },
             },
             "users": {
@@ -3757,6 +3781,8 @@ class TransportPlannerApp:
             "manage_finance": False,
             "view_analyse": False,
             "view_sauron": False,
+            "send_announcements": False,
+            "manage_announcements_config": False,
         }
 
         for role_name in user_roles:
@@ -3950,8 +3976,12 @@ class TransportPlannerApp:
         ttk.Button(view_frame, text="🕐 Par Heure", 
                   command=self.open_view_by_time,
                   style="View.TButton").pack(side="left", padx=2)
-        ttk.Button(view_frame, text="📍 Par Voyage", 
+        ttk.Button(view_frame, text="📍 Par Voyage",
                   command=self.open_view_by_voyage,
+                  style="View.TButton").pack(side="left", padx=2)
+
+        ttk.Button(view_frame, text="📢 Annonces",
+                  command=self.open_planning_announcements,
                   style="View.TButton").pack(side="left", padx=2)
 
         perms = self.rights["permissions"]
@@ -5501,7 +5531,523 @@ class TransportPlannerApp:
             ttk.Button(export_frame, text='📄 Exporter PDF', command=export_pdf_par_voyage).pack(side='left', padx=5)
         
         ttk.Button(export_frame, text="Fermer", command=on_close).pack(side="left", padx=10)
-    
+
+    def open_planning_announcements(self):
+        """Ouvrir la fenêtre des annonces SST pour J+1"""
+        # Vérifier la permission
+        if not self.rights["permissions"].get("send_announcements", False):
+            messagebox.showwarning("Permission refusée",
+                "Vous n'avez pas la permission d'envoyer des annonces.\n"
+                "Contactez un administrateur pour obtenir cette permission.")
+            return
+
+        # Vérifier si on est sur J+1
+        today = date.today()
+        tomorrow = today + timedelta(days=1)
+
+        if self.current_date != tomorrow:
+            messagebox.showwarning("Date non autorisée",
+                f"Les annonces ne peuvent être envoyées que pour J+1.\n\n"
+                f"Date actuelle du planning: {self.current_date.strftime('%d/%m/%Y')}\n"
+                f"Date autorisée (J+1): {tomorrow.strftime('%d/%m/%Y')}\n\n"
+                f"Veuillez sélectionner la date de demain pour envoyer des annonces.")
+            return
+
+        # Charger les configurations
+        sst_emails = load_json(SST_EMAILS_FILE, default={})
+        announcement_config = load_json(ANNOUNCEMENT_CONFIG_FILE, default={
+            "reply_to": "",
+            "subject": "Annonce missions transport - {date}",
+            "cc_addresses": [],
+            "body_template": """Bonjour,
+
+Pour le {date}, vous avez la/les mission(s) suivante(s) :
+
+{missions_list}
+
+Lieu de présentation : {lieu_presentation}
+
+Merci de confirmer :
+- Que le(s) chauffeur(s) annoncé(s) est/sont bien les bons
+- Que vous acceptez la/les mission(s)
+
+Merci de répondre avant 20h00.
+
+Cordialement,
+{expediteur}""",
+            "lieu_presentation": "Tubize",
+            "variables_help": [
+                "{date} - Date de la mission (format: JJ/MM/AAAA)",
+                "{sst_name} - Nom du sous-traitant",
+                "{missions_list} - Liste détaillée des missions",
+                "{chauffeurs} - Liste des chauffeurs",
+                "{lieu_presentation} - Lieu de présentation",
+                "{expediteur} - Nom de l'expéditeur",
+                "{nb_missions} - Nombre de missions",
+                "{premiere_heure} - Heure de la première mission"
+            ]
+        })
+        history = load_json(ANNOUNCEMENT_HISTORY_FILE, default=[])
+
+        # Récupérer les SST du planning J+1
+        sst_missions = {}
+        for m in self.missions:
+            sst = m.get("sst", "").strip()
+            if sst:
+                if sst not in sst_missions:
+                    sst_missions[sst] = []
+                sst_missions[sst].append(m)
+
+        if not sst_missions:
+            messagebox.showinfo("Aucun SST",
+                f"Aucun sous-traitant trouvé dans le planning du {self.current_date.strftime('%d/%m/%Y')}.")
+            return
+
+        # Créer la fenêtre
+        win = tk.Toplevel(self.root)
+        win.title(f"📢 Annonces SST - {self.current_date.strftime('%d/%m/%Y')}")
+        win.geometry("1000x700")
+        win.transient(self.root)
+
+        # Header
+        header = ttk.Frame(win, padding=10)
+        header.pack(fill="x")
+        ttk.Label(header, text="📢 Envoi d'annonces aux sous-traitants",
+                 font=('Arial', 14, 'bold')).pack(side="left")
+        ttk.Label(header, text=f"Date mission: {self.current_date.strftime('%d/%m/%Y')} (J+1)",
+                 font=('Arial', 11), foreground="green").pack(side="right")
+
+        # Notebook pour les onglets
+        notebook = ttk.Notebook(win)
+        notebook.pack(fill="both", expand=True, padx=10, pady=5)
+
+        # === ONGLET 1: Liste des SST ===
+        tab_sst = ttk.Frame(notebook, padding=10)
+        notebook.add(tab_sst, text="📋 SST à contacter")
+
+        # Frame pour la liste des SST
+        list_frame = ttk.Frame(tab_sst)
+        list_frame.pack(fill="both", expand=True)
+
+        columns = ("sst", "nb_missions", "chauffeurs", "premiere_heure", "email", "status")
+        tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=15)
+
+        tree.heading("sst", text="SST")
+        tree.heading("nb_missions", text="Missions")
+        tree.heading("chauffeurs", text="Chauffeurs")
+        tree.heading("premiere_heure", text="1ère heure")
+        tree.heading("email", text="Email configuré")
+        tree.heading("status", text="Statut")
+
+        tree.column("sst", width=100)
+        tree.column("nb_missions", width=70)
+        tree.column("chauffeurs", width=200)
+        tree.column("premiere_heure", width=80)
+        tree.column("email", width=200)
+        tree.column("status", width=150)
+
+        vsb = ttk.Scrollbar(list_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+
+        tree.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+
+        def check_already_sent(sst_name, target_date):
+            """Vérifier si un mail a déjà été envoyé pour ce SST et cette date"""
+            for h in history:
+                if h.get("sst") == sst_name and h.get("mission_date") == target_date:
+                    return h
+            return None
+
+        def refresh_sst_list():
+            for item in tree.get_children():
+                tree.delete(item)
+
+            target_date_str = self.current_date.strftime("%Y-%m-%d")
+
+            for sst, missions in sorted(sst_missions.items()):
+                # Trouver les chauffeurs uniques
+                chauffeurs = list(set(m.get("chauffeur_nom", "N/A") for m in missions if m.get("chauffeur_nom")))
+                chauffeurs_str = ", ".join(chauffeurs) if chauffeurs else "Non assigné"
+
+                # Trouver la première heure
+                heures = [m.get("heure", "99:99") for m in missions]
+                premiere_heure = min(heures) if heures else "N/A"
+
+                # Email configuré
+                email_config = sst_emails.get(sst, {})
+                emails = email_config.get("emails", [])
+                email_str = emails[0] if emails else "❌ Non configuré"
+
+                # Vérifier si déjà envoyé
+                already_sent = check_already_sent(sst, target_date_str)
+                if already_sent:
+                    status = f"✅ Envoyé le {already_sent.get('sent_at', '')[:16]}"
+                    tag = "sent"
+                else:
+                    status = "⏳ En attente"
+                    tag = "pending"
+
+                tree.insert("", "end", values=(
+                    sst,
+                    len(missions),
+                    chauffeurs_str[:50] + ("..." if len(chauffeurs_str) > 50 else ""),
+                    premiere_heure,
+                    email_str[:40] + ("..." if len(email_str) > 40 else ""),
+                    status
+                ), tags=(tag,))
+
+            tree.tag_configure("sent", background="#d4edda")
+            tree.tag_configure("pending", background="#fff3cd")
+
+        refresh_sst_list()
+
+        # Boutons d'action SST
+        btn_frame = ttk.Frame(tab_sst, padding=5)
+        btn_frame.pack(fill="x")
+
+        def send_announcement_to_selected():
+            selected = tree.selection()
+            if not selected:
+                messagebox.showwarning("Attention", "Veuillez sélectionner un SST.")
+                return
+
+            item = tree.item(selected[0])
+            sst_name = item['values'][0]
+
+            # Vérifier si déjà envoyé
+            target_date_str = self.current_date.strftime("%Y-%m-%d")
+            already_sent = check_already_sent(sst_name, target_date_str)
+
+            if already_sent:
+                msg = (f"Un mail a déjà été envoyé pour {sst_name} "
+                      f"le {already_sent.get('sent_at', 'N/A')[:16]}\n"
+                      f"par {already_sent.get('sent_by', 'N/A')}.\n\n"
+                      "Voulez-vous renvoyer un mail ?")
+                if not messagebox.askyesno("Mail déjà envoyé", msg):
+                    return
+
+            # Vérifier si email configuré
+            email_config = sst_emails.get(sst_name, {})
+            emails = email_config.get("emails", [])
+
+            if not emails:
+                messagebox.showerror("Email non configuré",
+                    f"Aucune adresse email configurée pour {sst_name}.\n"
+                    "Veuillez configurer l'email dans l'onglet 'Config Emails SST'.")
+                return
+
+            # Générer et envoyer le mail
+            send_announcement_email(sst_name)
+
+        def send_announcement_email(sst_name):
+            """Générer et ouvrir le mail dans Outlook"""
+            if not OUTLOOK_AVAILABLE:
+                messagebox.showerror("Outlook non disponible",
+                    "Le module Outlook (win32com) n'est pas installé.\n"
+                    "Installez-le avec: pip install pywin32")
+                return
+
+            missions = sst_missions.get(sst_name, [])
+            email_config = sst_emails.get(sst_name, {})
+            emails = email_config.get("emails", [])
+
+            # Préparer les données
+            chauffeurs = list(set(m.get("chauffeur_nom", "N/A") for m in missions if m.get("chauffeur_nom")))
+            heures = [m.get("heure", "99:99") for m in missions]
+            premiere_heure = min(heures) if heures else "N/A"
+
+            # Construire la liste des missions
+            missions_lines = []
+            for m in sorted(missions, key=lambda x: x.get("heure", "")):
+                line = f"  - {m.get('heure', 'N/A')} : {m.get('type', '')} - Voyage {m.get('voyage', '')} - {m.get('nb_pal', 0)} palettes"
+                if m.get("chauffeur_nom"):
+                    line += f" - Chauffeur: {m.get('chauffeur_nom')}"
+                missions_lines.append(line)
+            missions_list = "\n".join(missions_lines)
+
+            # Remplacer les variables dans le template
+            body = announcement_config.get("body_template", "")
+            subject = announcement_config.get("subject", "Annonce missions - {date}")
+
+            replacements = {
+                "{date}": self.current_date.strftime("%d/%m/%Y"),
+                "{sst_name}": sst_name,
+                "{missions_list}": missions_list,
+                "{chauffeurs}": ", ".join(chauffeurs) if chauffeurs else "Non assigné",
+                "{lieu_presentation}": announcement_config.get("lieu_presentation", "Tubize"),
+                "{expediteur}": self.current_user,
+                "{nb_missions}": str(len(missions)),
+                "{premiere_heure}": premiere_heure
+            }
+
+            for key, value in replacements.items():
+                body = body.replace(key, value)
+                subject = subject.replace(key, value)
+
+            try:
+                outlook = win32com.client.Dispatch("Outlook.Application")
+                mail = outlook.CreateItem(0)
+
+                mail.To = "; ".join(emails)
+                mail.Subject = subject
+                mail.Body = body
+
+                # Ajouter CC si configuré
+                cc_addresses = announcement_config.get("cc_addresses", [])
+                if cc_addresses:
+                    mail.CC = "; ".join(cc_addresses)
+
+                # Configurer Reply-To si spécifié
+                reply_to = announcement_config.get("reply_to", "")
+                if reply_to:
+                    mail.ReplyRecipients.Add(reply_to)
+
+                mail.Display()  # Afficher le mail (ne pas envoyer automatiquement)
+
+                # Enregistrer dans l'historique
+                history_entry = {
+                    "id": str(uuid.uuid4()),
+                    "sst": sst_name,
+                    "mission_date": self.current_date.strftime("%Y-%m-%d"),
+                    "sent_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "sent_by": self.current_user,
+                    "recipients": emails,
+                    "subject": subject,
+                    "nb_missions": len(missions),
+                    "chauffeurs": chauffeurs
+                }
+                history.append(history_entry)
+                save_json(ANNOUNCEMENT_HISTORY_FILE, history)
+
+                # Log de l'activité
+                if hasattr(self, 'activity_logger'):
+                    self.activity_logger.log_action(
+                        action="send_sst_announcement",
+                        entity_type="announcement",
+                        entity_id=history_entry["id"],
+                        details={"sst": sst_name, "mission_date": self.current_date.strftime("%Y-%m-%d")}
+                    )
+
+                refresh_sst_list()
+                messagebox.showinfo("Mail créé",
+                    f"Le mail pour {sst_name} a été créé dans Outlook.\n"
+                    "Vérifiez le contenu et envoyez-le manuellement.")
+
+            except Exception as e:
+                messagebox.showerror("Erreur Outlook", f"Erreur lors de la création du mail:\n{e}")
+
+        def send_all_pending():
+            """Envoyer les annonces à tous les SST en attente"""
+            target_date_str = self.current_date.strftime("%Y-%m-%d")
+            pending_sst = []
+
+            for sst in sst_missions.keys():
+                email_config = sst_emails.get(sst, {})
+                emails = email_config.get("emails", [])
+                if emails and not check_already_sent(sst, target_date_str):
+                    pending_sst.append(sst)
+
+            if not pending_sst:
+                messagebox.showinfo("Aucun envoi", "Tous les SST ont déjà reçu leur annonce ou n'ont pas d'email configuré.")
+                return
+
+            msg = f"Créer les mails pour {len(pending_sst)} SST ?\n\n" + "\n".join(f"  - {s}" for s in pending_sst)
+            if not messagebox.askyesno("Confirmer envoi groupé", msg):
+                return
+
+            for sst in pending_sst:
+                send_announcement_email(sst)
+
+        ttk.Button(btn_frame, text="📧 Envoyer au SST sélectionné",
+                  command=send_announcement_to_selected).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="📬 Envoyer à tous les SST en attente",
+                  command=send_all_pending).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="🔄 Rafraîchir",
+                  command=refresh_sst_list).pack(side="left", padx=5)
+
+        # === ONGLET 2: Configuration emails SST ===
+        tab_emails = ttk.Frame(notebook, padding=10)
+        notebook.add(tab_emails, text="📧 Config Emails SST")
+
+        email_list_frame = ttk.LabelFrame(tab_emails, text="Emails par SST", padding=10)
+        email_list_frame.pack(fill="both", expand=True)
+
+        email_columns = ("sst", "emails")
+        email_tree = ttk.Treeview(email_list_frame, columns=email_columns, show="headings", height=12)
+        email_tree.heading("sst", text="SST")
+        email_tree.heading("emails", text="Adresses email")
+        email_tree.column("sst", width=150)
+        email_tree.column("emails", width=400)
+
+        email_vsb = ttk.Scrollbar(email_list_frame, orient="vertical", command=email_tree.yview)
+        email_tree.configure(yscrollcommand=email_vsb.set)
+        email_tree.pack(side="left", fill="both", expand=True)
+        email_vsb.pack(side="right", fill="y")
+
+        def refresh_email_list():
+            for item in email_tree.get_children():
+                email_tree.delete(item)
+
+            # Récupérer tous les SST connus
+            all_sst = set(sst_missions.keys())
+            sst_list = load_json(self.data_dir / "sst.json", [])
+            all_sst.update(sst_list)
+
+            for sst in sorted(all_sst):
+                config = sst_emails.get(sst, {})
+                emails = config.get("emails", [])
+                email_tree.insert("", "end", values=(sst, ", ".join(emails) if emails else "Non configuré"))
+
+        refresh_email_list()
+
+        # Form pour éditer les emails
+        edit_frame = ttk.LabelFrame(tab_emails, text="Modifier l'email d'un SST", padding=10)
+        edit_frame.pack(fill="x", pady=10)
+
+        ttk.Label(edit_frame, text="SST sélectionné:").grid(row=0, column=0, sticky="w", padx=5)
+        selected_sst_var = tk.StringVar()
+        selected_sst_label = ttk.Label(edit_frame, textvariable=selected_sst_var, font=('Arial', 10, 'bold'))
+        selected_sst_label.grid(row=0, column=1, sticky="w", padx=5)
+
+        ttk.Label(edit_frame, text="Emails (séparés par ;):").grid(row=1, column=0, sticky="w", padx=5)
+        email_entry_var = tk.StringVar()
+        email_entry = ttk.Entry(edit_frame, textvariable=email_entry_var, width=60)
+        email_entry.grid(row=1, column=1, sticky="w", padx=5, pady=5)
+
+        def on_email_tree_select(event):
+            selected = email_tree.selection()
+            if selected:
+                item = email_tree.item(selected[0])
+                sst = item['values'][0]
+                selected_sst_var.set(sst)
+                config = sst_emails.get(sst, {})
+                emails = config.get("emails", [])
+                email_entry_var.set("; ".join(emails))
+
+        email_tree.bind("<<TreeviewSelect>>", on_email_tree_select)
+
+        def save_sst_email():
+            sst = selected_sst_var.get()
+            if not sst:
+                messagebox.showwarning("Attention", "Veuillez sélectionner un SST.")
+                return
+
+            emails_str = email_entry_var.get().strip()
+            emails = [e.strip() for e in emails_str.split(";") if e.strip()]
+
+            sst_emails[sst] = {"emails": emails}
+            save_json(SST_EMAILS_FILE, sst_emails)
+            refresh_email_list()
+            refresh_sst_list()
+            messagebox.showinfo("Sauvegardé", f"Email(s) sauvegardé(s) pour {sst}.")
+
+        ttk.Button(edit_frame, text="💾 Sauvegarder", command=save_sst_email).grid(row=2, column=1, sticky="w", padx=5, pady=5)
+
+        # === ONGLET 3: Configuration du modèle ===
+        if self.rights["permissions"].get("manage_announcements_config", False):
+            tab_config = ttk.Frame(notebook, padding=10)
+            notebook.add(tab_config, text="⚙️ Admin Config")
+
+            # Variables du template
+            vars_frame = ttk.LabelFrame(tab_config, text="Variables disponibles dans le mail", padding=10)
+            vars_frame.pack(fill="x", pady=5)
+
+            vars_text = "\n".join(announcement_config.get("variables_help", []))
+            ttk.Label(vars_frame, text=vars_text, font=('Courier', 9), justify="left").pack(anchor="w")
+
+            # Configuration
+            config_frame = ttk.LabelFrame(tab_config, text="Paramètres du mail", padding=10)
+            config_frame.pack(fill="both", expand=True, pady=5)
+
+            row = 0
+            ttk.Label(config_frame, text="Objet du mail:").grid(row=row, column=0, sticky="w", padx=5, pady=2)
+            subject_var = tk.StringVar(value=announcement_config.get("subject", ""))
+            ttk.Entry(config_frame, textvariable=subject_var, width=60).grid(row=row, column=1, sticky="w", padx=5, pady=2)
+
+            row += 1
+            ttk.Label(config_frame, text="Adresse Reply-To:").grid(row=row, column=0, sticky="w", padx=5, pady=2)
+            reply_to_var = tk.StringVar(value=announcement_config.get("reply_to", ""))
+            ttk.Entry(config_frame, textvariable=reply_to_var, width=60).grid(row=row, column=1, sticky="w", padx=5, pady=2)
+
+            row += 1
+            ttk.Label(config_frame, text="CC fixe (séparés par ;):").grid(row=row, column=0, sticky="w", padx=5, pady=2)
+            cc_var = tk.StringVar(value="; ".join(announcement_config.get("cc_addresses", [])))
+            ttk.Entry(config_frame, textvariable=cc_var, width=60).grid(row=row, column=1, sticky="w", padx=5, pady=2)
+
+            row += 1
+            ttk.Label(config_frame, text="Lieu de présentation:").grid(row=row, column=0, sticky="w", padx=5, pady=2)
+            lieu_var = tk.StringVar(value=announcement_config.get("lieu_presentation", "Tubize"))
+            ttk.Entry(config_frame, textvariable=lieu_var, width=40).grid(row=row, column=1, sticky="w", padx=5, pady=2)
+
+            row += 1
+            ttk.Label(config_frame, text="Modèle du corps du mail:").grid(row=row, column=0, sticky="nw", padx=5, pady=2)
+            body_text = tk.Text(config_frame, height=12, width=70)
+            body_text.grid(row=row, column=1, sticky="w", padx=5, pady=2)
+            body_text.insert("1.0", announcement_config.get("body_template", ""))
+
+            def save_config():
+                announcement_config["subject"] = subject_var.get()
+                announcement_config["reply_to"] = reply_to_var.get()
+                announcement_config["cc_addresses"] = [e.strip() for e in cc_var.get().split(";") if e.strip()]
+                announcement_config["lieu_presentation"] = lieu_var.get()
+                announcement_config["body_template"] = body_text.get("1.0", "end-1c")
+
+                save_json(ANNOUNCEMENT_CONFIG_FILE, announcement_config)
+                messagebox.showinfo("Sauvegardé", "Configuration sauvegardée.")
+
+            ttk.Button(config_frame, text="💾 Sauvegarder la configuration", command=save_config).grid(row=row+1, column=1, sticky="w", padx=5, pady=10)
+
+        # === ONGLET 4: Historique ===
+        tab_history = ttk.Frame(notebook, padding=10)
+        notebook.add(tab_history, text="📜 Historique")
+
+        history_frame = ttk.Frame(tab_history)
+        history_frame.pack(fill="both", expand=True)
+
+        history_columns = ("sent_at", "sent_by", "sst", "mission_date", "recipients", "nb_missions")
+        history_tree = ttk.Treeview(history_frame, columns=history_columns, show="headings", height=20)
+
+        history_tree.heading("sent_at", text="Envoyé le")
+        history_tree.heading("sent_by", text="Par")
+        history_tree.heading("sst", text="SST")
+        history_tree.heading("mission_date", text="Date mission")
+        history_tree.heading("recipients", text="Destinataires")
+        history_tree.heading("nb_missions", text="Nb missions")
+
+        history_tree.column("sent_at", width=140)
+        history_tree.column("sent_by", width=100)
+        history_tree.column("sst", width=80)
+        history_tree.column("mission_date", width=100)
+        history_tree.column("recipients", width=250)
+        history_tree.column("nb_missions", width=80)
+
+        history_vsb = ttk.Scrollbar(history_frame, orient="vertical", command=history_tree.yview)
+        history_tree.configure(yscrollcommand=history_vsb.set)
+        history_tree.pack(side="left", fill="both", expand=True)
+        history_vsb.pack(side="right", fill="y")
+
+        def refresh_history():
+            for item in history_tree.get_children():
+                history_tree.delete(item)
+
+            for h in sorted(history, key=lambda x: x.get("sent_at", ""), reverse=True):
+                history_tree.insert("", "end", values=(
+                    h.get("sent_at", "")[:16],
+                    h.get("sent_by", ""),
+                    h.get("sst", ""),
+                    h.get("mission_date", ""),
+                    "; ".join(h.get("recipients", []))[:50],
+                    h.get("nb_missions", 0)
+                ))
+
+        refresh_history()
+
+        # Bouton fermer
+        close_frame = ttk.Frame(win, padding=10)
+        close_frame.pack(fill="x")
+        ttk.Button(close_frame, text="Fermer", command=win.destroy).pack(side="right", padx=5)
+
     def _fill_consolidated_view(self, tree, sort_by="time"):
         for item in tree.get_children():
             tree.delete(item)
