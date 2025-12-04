@@ -5561,11 +5561,11 @@ class TransportPlannerApp:
             "cc_addresses": [],
             "body_template": """Bonjour,
 
-Pour le {date}, vous avez la/les mission(s) suivante(s) :
+Pour le {date}, les missions suivantes sont planifiées pour votre société :
 
-{missions_list}
+{chauffeurs_list}
 
-Lieu de présentation : {lieu_presentation}
+Lieu de présentation des chauffeurs : {lieu_presentation}
 
 Merci de confirmer :
 - Que le(s) chauffeur(s) annoncé(s) est/sont bien les bons
@@ -5579,12 +5579,11 @@ Cordialement,
             "variables_help": [
                 "{date} - Date de la mission (format: JJ/MM/AAAA)",
                 "{sst_name} - Nom du sous-traitant",
-                "{missions_list} - Liste détaillée des missions",
-                "{chauffeurs} - Liste des chauffeurs",
+                "{chauffeurs_list} - Liste des chauffeurs avec leur première heure",
                 "{lieu_presentation} - Lieu de présentation",
                 "{expediteur} - Nom de l'expéditeur",
-                "{nb_missions} - Nombre de missions",
-                "{premiere_heure} - Heure de la première mission"
+                "{nb_chauffeurs} - Nombre de chauffeurs",
+                "{nb_missions} - Nombre de missions"
             ]
         })
         history = load_json(ANNOUNCEMENT_HISTORY_FILE, default=[])
@@ -5753,18 +5752,27 @@ Cordialement,
             emails = email_config.get("emails", [])
 
             # Préparer les données
-            chauffeurs = list(set(m.get("chauffeur_nom", "N/A") for m in missions if m.get("chauffeur_nom")))
-            heures = [m.get("heure", "99:99") for m in missions]
-            premiere_heure = min(heures) if heures else "N/A"
+            # Construire la liste des chauffeurs avec leur première heure
+            # Regrouper les missions par chauffeur et trouver la première heure
+            chauffeurs_dict = {}
+            for m in missions:
+                chauffeur_nom = m.get("chauffeur_nom", "").strip()
+                if chauffeur_nom:
+                    heure = m.get("heure", "99:99")
+                    if chauffeur_nom not in chauffeurs_dict:
+                        chauffeurs_dict[chauffeur_nom] = heure
+                    else:
+                        # Garder la première heure (la plus tôt)
+                        if heure < chauffeurs_dict[chauffeur_nom]:
+                            chauffeurs_dict[chauffeur_nom] = heure
 
-            # Construire la liste des missions
-            missions_lines = []
-            for m in sorted(missions, key=lambda x: x.get("heure", "")):
-                line = f"  - {m.get('heure', 'N/A')} : {m.get('type', '')} - Voyage {m.get('voyage', '')} - {m.get('nb_pal', 0)} palettes"
-                if m.get("chauffeur_nom"):
-                    line += f" - Chauffeur: {m.get('chauffeur_nom')}"
-                missions_lines.append(line)
-            missions_list = "\n".join(missions_lines)
+            # Générer la liste formatée
+            chauffeurs_lines = []
+            for i, (nom, heure) in enumerate(sorted(chauffeurs_dict.items(), key=lambda x: x[1]), 1):
+                chauffeurs_lines.append(f"Chauffeur {i} : {nom} – Attendu pour {heure}")
+            chauffeurs_list = "\n".join(chauffeurs_lines) if chauffeurs_lines else "Aucun chauffeur assigné"
+
+            chauffeurs = list(chauffeurs_dict.keys())
 
             # Remplacer les variables dans le template
             body = announcement_config.get("body_template", "")
@@ -5773,12 +5781,11 @@ Cordialement,
             replacements = {
                 "{date}": self.current_date.strftime("%d/%m/%Y"),
                 "{sst_name}": sst_name,
-                "{missions_list}": missions_list,
-                "{chauffeurs}": ", ".join(chauffeurs) if chauffeurs else "Non assigné",
+                "{chauffeurs_list}": chauffeurs_list,
                 "{lieu_presentation}": announcement_config.get("lieu_presentation", "Tubize"),
                 "{expediteur}": self.current_user,
-                "{nb_missions}": str(len(missions)),
-                "{premiere_heure}": premiere_heure
+                "{nb_chauffeurs}": str(len(chauffeurs)),
+                "{nb_missions}": str(len(missions))
             }
 
             for key, value in replacements.items():
