@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+
+{% block title %}Tableau de bord - TomatoPlan Web{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="bi bi-speedometer2"></i> Tableau de bord
+        </h1>
+    </div>
+</div>
+
+<!-- Statistiques -->
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title text-uppercase">Missions aujourd'hui</h6>
+                        <h2 class="mb-0">{{ missions_today }}</h2>
+                        <small>dont {{ missions_effectuees }} effectuées</small>
+                    </div>
+                    <i class="bi bi-calendar-check" style="font-size: 3rem; opacity: 0.5;"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title text-uppercase">Missions demain</h6>
+                        <h2 class="mb-0">{{ missions_tomorrow }}</h2>
+                    </div>
+                    <i class="bi bi-calendar-plus" style="font-size: 3rem; opacity: 0.5;"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-3">
+        <div class="card text-white bg-info">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title text-uppercase">Chauffeurs actifs</h6>
+                        <h2 class="mb-0">{{ chauffeurs_actifs }}</h2>
+                    </div>
+                    <i class="bi bi-people-fill" style="font-size: 3rem; opacity: 0.5;"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-3">
+        <div class="card text-white bg-warning">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-title text-uppercase">Taux réalisation</h6>
+                        <h2 class="mb-0">
+                            {% if missions_today > 0 %}
+                                {{ (missions_effectuees * 100 / missions_today)|round|int }}%
+                            {% else %}
+                                0%
+                            {% endif %}
+                        </h2>
+                    </div>
+                    <i class="bi bi-graph-up" style="font-size: 3rem; opacity: 0.5;"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Missions par SST -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Top 5 SST aujourd'hui</h5>
+            </div>
+            <div class="card-body">
+                {% if missions_par_sst %}
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>SST</th>
+                                <th class="text-end">Missions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for sst, count in missions_par_sst %}
+                                <tr>
+                                    <td>{{ sst }}</td>
+                                    <td class="text-end"><span class="badge bg-primary">{{ count }}</span></td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                {% else %}
+                    <p class="text-muted">Aucune mission aujourd'hui</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Accès rapides -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="bi bi-lightning"></i> Accès rapides</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    {% if has_permission('edit_planning') %}
+                        <a href="{{ url_for('planning.index') }}" class="btn btn-primary">
+                            <i class="bi bi-calendar-plus"></i> Créer une mission
+                        </a>
+                    {% endif %}
+                    {% if has_permission('view_planning') %}
+                        <a href="{{ url_for('planning.suivi') }}" class="btn btn-success">
+                            <i class="bi bi-list-check"></i> Suivi des missions
+                        </a>
+                    {% endif %}
+                    {% if has_permission('view_finance') %}
+                        <a href="{{ url_for('finance.index') }}" class="btn btn-info">
+                            <i class="bi bi-currency-euro"></i> Dashboard financier
+                        </a>
+                    {% endif %}
+                    {% if has_permission('view_analyse') %}
+                        <a href="{{ url_for('analyse.index') }}" class="btn btn-warning">
+                            <i class="bi bi-graph-up"></i> Analyse avancée
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Prochaines missions -->
+{% if upcoming_missions %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="bi bi-calendar3"></i> Prochaines missions (7 jours)</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Heure</th>
+                                <th>Voyage</th>
+                                <th>SST</th>
+                                <th>Chauffeur</th>
+                                <th>Pays</th>
+                                <th>Statut</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for mission in upcoming_missions %}
+                                <tr>
+                                    <td>{{ mission.date.strftime('%d/%m/%Y') }}</td>
+                                    <td>{{ mission.heure }}</td>
+                                    <td><span class="badge bg-secondary">{{ mission.voyage }}</span></td>
+                                    <td>{{ mission.sst }}</td>
+                                    <td>{{ mission.chauffeur or '-' }}</td>
+                                    <td>{{ mission.pays }}</td>
+                                    <td>
+                                        {% if mission.effectue %}
+                                            <span class="badge bg-success">Effectuée</span>
+                                        {% else %}
+                                            <span class="badge bg-warning">En attente</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Activités récentes (si permission SAURON) -->
+{% if has_permission('view_sauron') and recent_activities %}
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="bi bi-eye"></i> Activités récentes</h5>
+            </div>
+            <div class="card-body">
+                <div class="timeline">
+                    {% for activity in recent_activities %}
+                        <div class="timeline-item mb-2">
+                            <small class="text-muted">
+                                {{ activity.timestamp.strftime('%d/%m/%Y %H:%M') }}
+                            </small>
+                            <span class="ms-2">
+                                <strong>{{ activity.user.username }}</strong>
+                                <span class="badge bg-info">{{ activity.action }}</span>
+                                {{ activity.entity_type }}
+                            </span>
+                        </div>
+                    {% endfor %}
+                </div>
+                <div class="text-center mt-3">
+                    <a href="{{ url_for('sauron.index') }}" class="btn btn-sm btn-outline-primary">
+                        Voir tout l'historique
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
