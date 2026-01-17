@@ -1,0 +1,505 @@
+{% extends "base.html" %}
+
+{% block title %}Planning - TomatoPlan Web{% endblock %}
+
+{% block extra_css %}
+<style>
+    .mission-card {
+        cursor: move;
+        transition: all 0.2s;
+    }
+    .mission-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .mission-card.effectue {
+        border-left: 4px solid #28a745;
+    }
+    .mission-card.non-effectue {
+        border-left: 4px solid #ffc107;
+    }
+    .sortable-ghost {
+        opacity: 0.4;
+        background-color: #f8f9fa;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-md-6">
+        <h1><i class="bi bi-calendar3"></i> Planning</h1>
+    </div>
+    <div class="col-md-6 text-end">
+        {% if can_edit %}
+            <button class="btn btn-primary" onclick="openCreateModal()">
+                <i class="bi bi-plus-circle"></i> Nouvelle mission
+            </button>
+            <button class="btn btn-success" onclick="exportExcel()">
+                <i class="bi bi-file-earmark-excel"></i> Excel
+            </button>
+            <button class="btn btn-danger" onclick="exportPDF()">
+                <i class="bi bi-file-earmark-pdf"></i> PDF
+            </button>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Sélecteur de date -->
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row align-items-center">
+            <div class="col-auto">
+                <button class="btn btn-outline-primary" onclick="changeDate(-1)">
+                    <i class="bi bi-chevron-left"></i> Jour précédent
+                </button>
+            </div>
+            <div class="col-auto">
+                <input type="date" class="form-control" id="selectedDate"
+                       value="{{ selected_date }}" onchange="changeDateTo(this.value)">
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-outline-primary" onclick="changeDate(1)">
+                    Jour suivant <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-secondary" onclick="changeDateTo('{{ "now"|date("Y-m-d") }}')">
+                    <i class="bi bi-calendar-today"></i> Aujourd'hui
+                </button>
+            </div>
+            <div class="col">
+                <h4 class="mb-0 text-end">
+                    {{ selected_date.strftime('%A %d %B %Y')|title }}
+                    <span class="badge bg-primary">{{ missions|length }} mission(s)</span>
+                </h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filtres -->
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <select class="form-select" id="filterChauffeur" onchange="filterMissions()">
+                    <option value="">Tous les chauffeurs</option>
+                    {% for chauffeur in chauffeurs %}
+                        <option value="{{ chauffeur.nom }}">{{ chauffeur.nom }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <select class="form-select" id="filterSST" onchange="filterMissions()">
+                    <option value="">Tous les SST</option>
+                    {% for sst in sst_list %}
+                        <option value="{{ sst.nom }}">{{ sst.nom }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <select class="form-select" id="filterVoyage" onchange="filterMissions()">
+                    <option value="">Tous les voyages</option>
+                    {% for voyage in voyages %}
+                        <option value="{{ voyage.code }}">{{ voyage.code }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <select class="form-select" id="filterEffectue" onchange="filterMissions()">
+                    <option value="">Tous les statuts</option>
+                    <option value="oui">Effectuées</option>
+                    <option value="non">Non effectuées</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Liste des missions -->
+<div id="missionsList" class="row">
+    {% if missions %}
+        {% for mission in missions %}
+            <div class="col-md-6 col-lg-4 mb-3 mission-item"
+                 data-id="{{ mission.id }}"
+                 data-chauffeur="{{ mission.chauffeur or '' }}"
+                 data-sst="{{ mission.sst }}"
+                 data-voyage="{{ mission.voyage }}"
+                 data-effectue="{{ 'oui' if mission.effectue else 'non' }}">
+                <div class="card mission-card {{ 'effectue' if mission.effectue else 'non-effectue' }}">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h5 class="card-title mb-0">
+                                <i class="bi bi-clock"></i> {{ mission.heure }}
+                            </h5>
+                            {% if can_edit %}
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-primary" onclick="editMission('{{ mission.id }}')">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-outline-danger" onclick="deleteMission('{{ mission.id }}')">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="mb-2">
+                            <span class="badge bg-secondary">{{ mission.voyage }}</span>
+                            <span class="badge bg-info">{{ mission.type }}</span>
+                            {% if mission.ramasse %}
+                                <span class="badge bg-warning">RAMASSE</span>
+                            {% endif %}
+                        </div>
+
+                        <div class="mb-1">
+                            <strong>SST:</strong> {{ mission.sst }}
+                        </div>
+
+                        <div class="mb-1">
+                            <strong>Chauffeur:</strong>
+                            <span class="text-primary">{{ mission.chauffeur or 'Non assigné' }}</span>
+                        </div>
+
+                        <div class="mb-1">
+                            <i class="bi bi-geo-alt"></i> {{ mission.pays }}
+                            <i class="bi bi-box ms-2"></i> {{ mission.palettes }} palettes
+                        </div>
+
+                        {% if mission.numero %}
+                            <div class="mb-1">
+                                <i class="bi bi-hash"></i> {{ mission.numero }}
+                            </div>
+                        {% endif %}
+
+                        {% if mission.infos %}
+                            <div class="mb-2">
+                                <small class="text-muted">{{ mission.infos }}</small>
+                            </div>
+                        {% endif %}
+
+                        <div class="d-flex justify-content-between align-items-center mt-2 pt-2 border-top">
+                            <div>
+                                {% if mission.effectue %}
+                                    <span class="badge bg-success"><i class="bi bi-check-circle"></i> Effectuée</span>
+                                {% else %}
+                                    <span class="badge bg-warning"><i class="bi bi-hourglass-split"></i> En attente</span>
+                                {% endif %}
+                            </div>
+                            <div class="text-end">
+                                <small class="text-muted">
+                                    Marge: <strong class="{{ 'text-success' if mission.marge > 0 else 'text-danger' }}">{{ mission.marge }}€</strong>
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    {% else %}
+        <div class="col-12">
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> Aucune mission pour cette date.
+                {% if can_edit %}
+                    <a href="#" onclick="openCreateModal(); return false;">Créer la première mission</a>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Modal pour créer/éditer une mission -->
+<div class="modal fade" id="missionModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="missionModalTitle">Nouvelle mission</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="missionForm">
+                    <input type="hidden" id="missionId">
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Date</label>
+                            <input type="date" class="form-control" id="missionDate" value="{{ selected_date }}" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Heure</label>
+                            <input type="time" class="form-control" id="missionHeure" required>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Voyage</label>
+                            <select class="form-select" id="missionVoyage" required>
+                                <option value="">Sélectionner...</option>
+                                {% for voyage in voyages %}
+                                    <option value="{{ voyage.code }}">{{ voyage.code }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Type</label>
+                            <select class="form-select" id="missionType" required>
+                                <option value="LIVRAISON">LIVRAISON</option>
+                                <option value="RAMASSE">RAMASSE</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">SST</label>
+                            <select class="form-select" id="missionSST" required>
+                                <option value="">Sélectionner...</option>
+                                {% for sst in sst_list %}
+                                    <option value="{{ sst.nom }}">{{ sst.nom }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Chauffeur</label>
+                            <select class="form-select" id="missionChauffeur">
+                                <option value="">Non assigné</option>
+                                {% for chauffeur in chauffeurs %}
+                                    <option value="{{ chauffeur.nom }}">{{ chauffeur.nom }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Palettes</label>
+                            <input type="number" class="form-control" id="missionPalettes" min="0" value="0">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Pays</label>
+                            <select class="form-select" id="missionPays">
+                                <option value="Belgique">Belgique</option>
+                                <option value="France">France</option>
+                                <option value="Pays-Bas">Pays-Bas</option>
+                                <option value="Allemagne">Allemagne</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Numéro</label>
+                            <input type="text" class="form-control" id="missionNumero">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Revenus (€)</label>
+                            <input type="number" class="form-control" id="missionRevenus" step="0.01" value="0">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Coûts (€)</label>
+                            <input type="number" class="form-control" id="missionCouts" step="0.01" value="0">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Marge (€)</label>
+                            <input type="number" class="form-control" id="missionMarge" step="0.01" value="0" readonly>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Informations</label>
+                        <textarea class="form-control" id="missionInfos" rows="2"></textarea>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="missionRamasse">
+                        <label class="form-check-label" for="missionRamasse">
+                            Ramasse
+                        </label>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="missionEffectue">
+                        <label class="form-check-label" for="missionEffectue">
+                            Mission effectuée
+                        </label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="saveMission()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Variables globales
+let missions = {{ missions|tojson|safe }};
+const canEdit = {{ 'true' if can_edit else 'false' }};
+const selectedDate = '{{ selected_date }}';
+
+// Auto-calcul de la marge
+document.getElementById('missionRevenus').addEventListener('input', calculateMarge);
+document.getElementById('missionCouts').addEventListener('input', calculateMarge);
+
+function calculateMarge() {
+    const revenus = parseFloat(document.getElementById('missionRevenus').value) || 0;
+    const couts = parseFloat(document.getElementById('missionCouts').value) || 0;
+    document.getElementById('missionMarge').value = (revenus - couts).toFixed(2);
+}
+
+// Changer de date
+function changeDate(delta) {
+    const date = new Date(selectedDate);
+    date.setDate(date.getDate() + delta);
+    changeDateTo(date.toISOString().split('T')[0]);
+}
+
+function changeDateTo(newDate) {
+    window.location.href = '{{ url_for("planning.index") }}?date=' + newDate;
+}
+
+// Ouvrir le modal de création
+function openCreateModal() {
+    document.getElementById('missionModalTitle').textContent = 'Nouvelle mission';
+    document.getElementById('missionForm').reset();
+    document.getElementById('missionId').value = '';
+    document.getElementById('missionDate').value = selectedDate;
+    new bootstrap.Modal(document.getElementById('missionModal')).show();
+}
+
+// Éditer une mission
+function editMission(id) {
+    const mission = missions.find(m => m.id === id);
+    if (!mission) return;
+
+    document.getElementById('missionModalTitle').textContent = 'Éditer la mission';
+    document.getElementById('missionId').value = mission.id;
+    document.getElementById('missionDate').value = mission.date;
+    document.getElementById('missionHeure').value = mission.heure;
+    document.getElementById('missionVoyage').value = mission.voyage;
+    document.getElementById('missionType').value = mission.type;
+    document.getElementById('missionSST').value = mission.sst;
+    document.getElementById('missionChauffeur').value = mission.chauffeur || '';
+    document.getElementById('missionPalettes').value = mission.palettes;
+    document.getElementById('missionPays').value = mission.pays;
+    document.getElementById('missionNumero').value = mission.numero || '';
+    document.getElementById('missionRevenus').value = mission.revenus;
+    document.getElementById('missionCouts').value = mission.couts;
+    document.getElementById('missionMarge').value = mission.marge;
+    document.getElementById('missionInfos').value = mission.infos || '';
+    document.getElementById('missionRamasse').checked = mission.ramasse;
+    document.getElementById('missionEffectue').checked = mission.effectue;
+
+    new bootstrap.Modal(document.getElementById('missionModal')).show();
+}
+
+// Sauvegarder la mission
+async function saveMission() {
+    const id = document.getElementById('missionId').value;
+    const data = {
+        date: document.getElementById('missionDate').value,
+        heure: document.getElementById('missionHeure').value,
+        voyage: document.getElementById('missionVoyage').value,
+        type: document.getElementById('missionType').value,
+        sst: document.getElementById('missionSST').value,
+        chauffeur: document.getElementById('missionChauffeur').value || null,
+        palettes: parseInt(document.getElementById('missionPalettes').value) || 0,
+        pays: document.getElementById('missionPays').value,
+        numero: document.getElementById('missionNumero').value,
+        revenus: parseFloat(document.getElementById('missionRevenus').value) || 0,
+        couts: parseFloat(document.getElementById('missionCouts').value) || 0,
+        marge: parseFloat(document.getElementById('missionMarge').value) || 0,
+        infos: document.getElementById('missionInfos').value,
+        ramasse: document.getElementById('missionRamasse').checked,
+        effectue: document.getElementById('missionEffectue').checked
+    };
+
+    const url = id ? `/planning/mission/${id}/update` : '/planning/mission/create';
+    const method = id ? 'PUT' : 'POST';
+
+    try {
+        const response = await fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            bootstrap.Modal.getInstance(document.getElementById('missionModal')).hide();
+            location.reload();
+        } else {
+            alert('Erreur: ' + result.error);
+        }
+    } catch (error) {
+        alert('Erreur de connexion');
+        console.error(error);
+    }
+}
+
+// Supprimer une mission
+async function deleteMission(id) {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cette mission ?')) return;
+
+    try {
+        const response = await fetch(`/planning/mission/${id}/delete`, {
+            method: 'DELETE'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            location.reload();
+        } else {
+            alert('Erreur: ' + result.error);
+        }
+    } catch (error) {
+        alert('Erreur de connexion');
+        console.error(error);
+    }
+}
+
+// Filtrer les missions
+function filterMissions() {
+    const chauffeur = document.getElementById('filterChauffeur').value.toLowerCase();
+    const sst = document.getElementById('filterSST').value.toLowerCase();
+    const voyage = document.getElementById('filterVoyage').value.toLowerCase();
+    const effectue = document.getElementById('filterEffectue').value;
+
+    document.querySelectorAll('.mission-item').forEach(item => {
+        const itemChauffeur = item.dataset.chauffeur.toLowerCase();
+        const itemSST = item.dataset.sst.toLowerCase();
+        const itemVoyage = item.dataset.voyage.toLowerCase();
+        const itemEffectue = item.dataset.effectue;
+
+        const matchChauffeur = !chauffeur || itemChauffeur.includes(chauffeur);
+        const matchSST = !sst || itemSST.includes(sst);
+        const matchVoyage = !voyage || itemVoyage.includes(voyage);
+        const matchEffectue = !effectue || itemEffectue === effectue;
+
+        if (matchChauffeur && matchSST && matchVoyage && matchEffectue) {
+            item.style.display = '';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+}
+
+// Export Excel
+function exportExcel() {
+    window.location.href = `/api/export/missions?start=${selectedDate}&end=${selectedDate}&format=excel`;
+}
+
+// Export PDF
+function exportPDF() {
+    window.location.href = `/api/export/missions?start=${selectedDate}&end=${selectedDate}&format=pdf`;
+}
+</script>
+{% endblock %}

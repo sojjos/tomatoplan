@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+
+{% block title %}Aide - TomatoPlan Web{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-question-circle"></i> Centre d'aide</h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="accordion" id="aideAccordion">
+            <!-- Démarrage -->
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapse1">
+                        <i class="bi bi-play-circle me-2"></i> Premiers pas
+                    </button>
+                </h2>
+                <div id="collapse1" class="accordion-collapse collapse show" data-bs-parent="#aideAccordion">
+                    <div class="accordion-body">
+                        <h5>Connexion</h5>
+                        <p>Utilisez vos identifiants fournis par l'administrateur pour vous connecter. Si c'est votre première connexion, changez immédiatement votre mot de passe.</p>
+
+                        <h5>Navigation</h5>
+                        <p>Utilisez le menu en haut de la page pour accéder aux différentes sections :
+                            <ul>
+                                <li><strong>Accueil</strong> : Tableau de bord avec statistiques</li>
+                                <li><strong>Planning</strong> : Gestion du planning et des missions</li>
+                                <li><strong>Chauffeurs</strong> : Base de données des chauffeurs</li>
+                                <li><strong>Finance</strong> : Suivi financier et tarifs</li>
+                                <li><strong>Analyse</strong> : Analyse avancée et graphiques</li>
+                            </ul>
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Planning -->
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse2">
+                        <i class="bi bi-calendar3 me-2"></i> Gestion du Planning
+                    </button>
+                </h2>
+                <div id="collapse2" class="accordion-collapse collapse" data-bs-parent="#aideAccordion">
+                    <div class="accordion-body">
+                        <h5>Créer une mission</h5>
+                        <ol>
+                            <li>Sélectionnez la date dans le planning</li>
+                            <li>Cliquez sur "Nouvelle mission"</li>
+                            <li>Remplissez les informations obligatoires (heure, voyage, SST)</li>
+                            <li>Assignez un chauffeur si disponible</li>
+                            <li>Indiquez les revenus et coûts (la marge se calcule automatiquement)</li>
+                            <li>Enregistrez</li>
+                        </ol>
+
+                        <h5>Modifier une mission</h5>
+                        <p>Cliquez sur l'icône crayon <i class="bi bi-pencil"></i> sur la mission à modifier.</p>
+
+                        <h5>Supprimer une mission</h5>
+                        <p>Cliquez sur l'icône poubelle <i class="bi bi-trash"></i>. Une confirmation sera demandée.</p>
+
+                        <h5>Filtrer les missions</h5>
+                        <p>Utilisez les filtres en haut de la liste pour afficher uniquement les missions d'un chauffeur, SST ou voyage spécifique.</p>
+
+                        <h5>Exporter le planning</h5>
+                        <p>Cliquez sur le bouton "Excel" ou "PDF" pour télécharger le planning du jour.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chauffeurs -->
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse3">
+                        <i class="bi bi-people me-2"></i> Gestion des Chauffeurs
+                    </button>
+                </h2>
+                <div id="collapse3" class="accordion-collapse collapse" data-bs-parent="#aideAccordion">
+                    <div class="accordion-body">
+                        <h5>Ajouter un chauffeur</h5>
+                        <p>Cliquez sur "Nouveau chauffeur" et remplissez le formulaire. Vous pouvez associer le chauffeur à un SST.</p>
+
+                        <h5>Gérer les disponibilités</h5>
+                        <p>Dans la section "Disponibilités", sélectionnez une date et marquez les chauffeurs disponibles ou indisponibles avec une raison.</p>
+
+                        <h5>Désactiver un chauffeur</h5>
+                        <p>Au lieu de supprimer un chauffeur, vous pouvez le désactiver. Il restera dans l'historique mais ne sera plus proposé pour de nouvelles missions.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Finance -->
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse4">
+                        <i class="bi bi-currency-euro me-2"></i> Finance
+                    </button>
+                </h2>
+                <div id="collapse4" class="accordion-collapse collapse" data-bs-parent="#aideAccordion">
+                    <div class="accordion-body">
+                        <h5>Configurer les tarifs SST</h5>
+                        <p>Dans Finance → Tarifs, définissez les coûts par voyage et par SST. Ces tarifs seront utilisés pour calculer automatiquement les coûts des missions.</p>
+
+                        <h5>Configurer les revenus par palette</h5>
+                        <p>Définissez les grilles de revenus en fonction du nombre de palettes. Par exemple : 0-10 palettes = 100€, 11-20 palettes = 180€, etc.</p>
+
+                        <h5>Analyser les marges</h5>
+                        <p>Le dashboard financier affiche les revenus, coûts et marges par SST et par voyage sur la période sélectionnée.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analyse -->
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse5">
+                        <i class="bi bi-graph-up me-2"></i> Analyse Avancée
+                    </button>
+                </h2>
+                <div id="collapse5" class="accordion-collapse collapse" data-bs-parent="#aideAccordion">
+                    <div class="accordion-body">
+                        <h5>Consulter les graphiques</h5>
+                        <p>Sélectionnez une période et un mode de groupement (SST, voyage, chauffeur, date) pour visualiser les tendances.</p>
+
+                        <h5>Comparer des périodes</h5>
+                        <p>Utilisez les filtres de date pour comparer les performances sur différentes périodes.</p>
+
+                        <h5>Exporter les données</h5>
+                        <p>Toutes les données d'analyse peuvent être exportées en Excel ou PDF.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Droits -->
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse6">
+                        <i class="bi bi-shield-check me-2"></i> Droits et Permissions
+                    </button>
+                </h2>
+                <div id="collapse6" class="accordion-collapse collapse" data-bs-parent="#aideAccordion">
+                    <div class="accordion-body">
+                        <h5>Rôles disponibles</h5>
+                        <ul>
+                            <li><strong>Viewer</strong> : Consultation uniquement</li>
+                            <li><strong>Planner</strong> : Édition du planning</li>
+                            <li><strong>Planner Advanced</strong> : Planning + historique + finance</li>
+                            <li><strong>Driver Admin</strong> : Gestion des chauffeurs</li>
+                            <li><strong>Finance</strong> : Gestion financière</li>
+                            <li><strong>Analyse</strong> : Accès à l'analyse</li>
+                            <li><strong>Admin</strong> : Accès complet</li>
+                        </ul>
+
+                        <h5>Modifier les droits</h5>
+                        <p>Seuls les administrateurs peuvent modifier les rôles des utilisateurs dans Admin → Utilisateurs.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SAURON -->
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse7">
+                        <i class="bi bi-eye me-2"></i> SAURON - Surveillance
+                    </button>
+                </h2>
+                <div id="collapse7" class="accordion-collapse collapse" data-bs-parent="#aideAccordion">
+                    <div class="accordion-body">
+                        <h5>Qu'est-ce que SAURON ?</h5>
+                        <p>SAURON est le système de surveillance qui enregistre toutes les actions effectuées dans l'application : créations, modifications, suppressions, connexions, etc.</p>
+
+                        <h5>Consulter l'historique</h5>
+                        <p>Allez dans SAURON pour voir l'historique complet. Vous pouvez filtrer par utilisateur, action, type d'entité et période.</p>
+
+                        <h5>Détails des actions</h5>
+                        <p>Cliquez sur une action pour voir les détails complets, incluant l'état avant/après pour les modifications.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-lightbulb"></i> Astuces</h5>
+            </div>
+            <div class="card-body">
+                <h6>Raccourcis clavier</h6>
+                <ul class="list-unstyled">
+                    <li><kbd>Ctrl</kbd> + <kbd>K</kbd> : Recherche globale</li>
+                    <li><kbd>Esc</kbd> : Fermer les modals</li>
+                </ul>
+
+                <hr>
+
+                <h6>Bonnes pratiques</h6>
+                <ul>
+                    <li>Vérifiez les disponibilités des chauffeurs avant assignation</li>
+                    <li>Renseignez toujours les revenus et coûts pour un suivi précis</li>
+                    <li>Utilisez les filtres pour gagner du temps</li>
+                    <li>Exportez régulièrement pour archivage</li>
+                </ul>
+
+                <hr>
+
+                <h6>Sécurité</h6>
+                <ul>
+                    <li>Déconnectez-vous après utilisation</li>
+                    <li>Ne partagez pas vos identifiants</li>
+                    <li>Changez votre mot de passe régulièrement</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> Support</h5>
+            </div>
+            <div class="card-body">
+                <p>Besoin d'aide supplémentaire ?</p>
+                <p>Contactez votre administrateur système ou consultez le fichier README.md pour plus d'informations.</p>
+                <p class="mb-0"><small class="text-muted">Version 1.0.0</small></p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
