@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+
+{% block title %}Voyages - TomatoPlan Web{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-geo-alt"></i> Gestion des Voyages</h1>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-6">
+        <button class="btn btn-primary" onclick="openVoyageModal()">
+            <i class="bi bi-plus-circle"></i> Nouveau voyage
+        </button>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover" id="voyagesTable">
+                        <thead>
+                            <tr>
+                                <th>Code</th>
+                                <th>Type</th>
+                                <th>Pays</th>
+                                <th>Durée (min)</th>
+                                <th>Actif</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="voyagesBody">
+                            <tr>
+                                <td colspan="6" class="text-center">
+                                    <div class="spinner-border" role="status">
+                                        <span class="visually-hidden">Chargement...</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Voyage -->
+<div class="modal fade" id="voyageModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="voyageModalTitle">Nouveau voyage</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="voyageForm">
+                    <input type="hidden" id="voyageId">
+                    <div class="mb-3">
+                        <label for="voyageCode" class="form-label">Code *</label>
+                        <input type="text" class="form-control" id="voyageCode" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="voyageType" class="form-label">Type</label>
+                        <select class="form-select" id="voyageType">
+                            <option value="LIVRAISON">Livraison</option>
+                            <option value="RAMASSE">Ramasse</option>
+                            <option value="EXPORT">Export</option>
+                            <option value="IMPORT">Import</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="voyageCountry" class="form-label">Pays</label>
+                        <input type="text" class="form-control" id="voyageCountry" value="Belgique">
+                    </div>
+                    <div class="mb-3">
+                        <label for="voyageDuree" class="form-label">Durée (minutes)</label>
+                        <input type="number" class="form-control" id="voyageDuree" value="60">
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="voyageActif" checked>
+                        <label class="form-check-label" for="voyageActif">Actif</label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="saveVoyage()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let voyageModal;
+
+document.addEventListener('DOMContentLoaded', function() {
+    voyageModal = new bootstrap.Modal(document.getElementById('voyageModal'));
+    loadVoyages();
+});
+
+async function loadVoyages() {
+    const tbody = document.getElementById('voyagesBody');
+
+    try {
+        const response = await fetch('/voyages/api/list');
+        const voyages = await response.json();
+
+        if (voyages.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center">Aucun voyage trouvé</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = voyages.map(v => `
+            <tr>
+                <td>${v.code}</td>
+                <td>${v.type || '-'}</td>
+                <td>${v.country || '-'}</td>
+                <td>${v.duree || '-'}</td>
+                <td>
+                    ${v.actif ? '<span class="badge bg-success">Actif</span>' : '<span class="badge bg-secondary">Inactif</span>'}
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="editVoyage(${v.id})" title="Modifier">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    ${!v.actif ? `<button class="btn btn-sm btn-outline-danger" onclick="deleteVoyage(${v.id})" title="Supprimer"><i class="bi bi-trash"></i></button>` : ''}
+                </td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Erreur:', error);
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Erreur de chargement</td></tr>';
+    }
+}
+
+function openVoyageModal() {
+    document.getElementById('voyageModalTitle').textContent = 'Nouveau voyage';
+    document.getElementById('voyageForm').reset();
+    document.getElementById('voyageId').value = '';
+    document.getElementById('voyageCode').disabled = false;
+    document.getElementById('voyageActif').checked = true;
+    voyageModal.show();
+}
+
+async function editVoyage(id) {
+    try {
+        const response = await fetch(`/voyages/api/${id}`);
+        const voyage = await response.json();
+
+        document.getElementById('voyageModalTitle').textContent = 'Modifier voyage';
+        document.getElementById('voyageId').value = voyage.id;
+        document.getElementById('voyageCode').value = voyage.code;
+        document.getElementById('voyageCode').disabled = true; // Ne pas permettre de changer le code
+        document.getElementById('voyageType').value = voyage.type || 'LIVRAISON';
+        document.getElementById('voyageCountry').value = voyage.country || 'Belgique';
+        document.getElementById('voyageDuree').value = voyage.duree || 60;
+        document.getElementById('voyageActif').checked = voyage.actif;
+
+        voyageModal.show();
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors du chargement du voyage');
+    }
+}
+
+async function saveVoyage() {
+    const id = document.getElementById('voyageId').value;
+    const data = {
+        code: document.getElementById('voyageCode').value,
+        type: document.getElementById('voyageType').value,
+        country: document.getElementById('voyageCountry').value,
+        duree: parseInt(document.getElementById('voyageDuree').value) || 60,
+        actif: document.getElementById('voyageActif').checked
+    };
+
+    if (!data.code) {
+        alert('Le code est obligatoire');
+        return;
+    }
+
+    try {
+        const url = id ? `/voyages/${id}/update` : '/voyages/create';
+        const method = id ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            voyageModal.hide();
+            loadVoyages();
+        } else {
+            const error = await response.json();
+            alert('Erreur: ' + (error.error || 'Erreur inconnue'));
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors de l\'enregistrement');
+    }
+}
+
+async function deleteVoyage(id) {
+    if (!confirm('Supprimer définitivement ce voyage ?')) return;
+
+    try {
+        const response = await fetch(`/voyages/${id}/delete`, {method: 'DELETE'});
+        if (response.ok) {
+            loadVoyages();
+        } else {
+            alert('Erreur lors de la suppression');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors de la suppression');
+    }
+}
+</script>
+{% endblock %}

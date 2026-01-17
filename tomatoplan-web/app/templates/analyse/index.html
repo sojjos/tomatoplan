@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block title %}Analyse - TomatoPlan Web{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-graph-up"></i> Analyse Avancée</h1>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-3">
+        <label>Date début</label>
+        <input type="date" class="form-control" id="dateDebut" value="{{ start_date }}">
+    </div>
+    <div class="col-md-3">
+        <label>Date fin</label>
+        <input type="date" class="form-control" id="dateFin" value="{{ end_date }}">
+    </div>
+    <div class="col-md-3">
+        <label>Grouper par</label>
+        <select class="form-select" id="groupBy">
+            <option value="sst">SST</option>
+            <option value="voyage">Voyage</option>
+            <option value="chauffeur">Chauffeur</option>
+            <option value="date">Date</option>
+        </select>
+    </div>
+    <div class="col-md-3">
+        <label>&nbsp;</label>
+        <button class="btn btn-primary w-100" onclick="loadAnalyse()">Analyser</button>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Graphique des Marges</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="margeChart" style="max-height: 400px;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Données Détaillées</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th id="labelHeader">Libellé</th>
+                                <th>Missions</th>
+                                <th>Revenus</th>
+                                <th>Coûts</th>
+                                <th>Marge</th>
+                                <th>Taux marge (%)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="analyseBody">
+                            <tr><td colspan="6" class="text-center">Sélectionnez une période et cliquez sur Analyser</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let margeChart = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadAnalyse();
+});
+
+async function loadAnalyse() {
+    const dateDebut = document.getElementById('dateDebut').value;
+    const dateFin = document.getElementById('dateFin').value;
+    const groupBy = document.getElementById('groupBy').value;
+
+    try {
+        const response = await fetch(`/analyse/api/data?start=${dateDebut}&end=${dateFin}&group_by=${groupBy}`);
+        const result = await response.json();
+        const data = result.data;
+
+        // Mettre à jour le header du tableau
+        const headers = {
+            'sst': 'SST',
+            'voyage': 'Voyage',
+            'chauffeur': 'Chauffeur',
+            'date': 'Date'
+        };
+        document.getElementById('labelHeader').textContent = headers[groupBy];
+
+        // Mettre à jour le tableau
+        const tbody = document.getElementById('analyseBody');
+        if (data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center">Aucune donnée pour cette période</td></tr>';
+        } else {
+            tbody.innerHTML = data.map(d => {
+                const tauxMarge = d.revenus > 0 ? ((d.marge / d.revenus) * 100).toFixed(1) : 0;
+                return `
+                    <tr>
+                        <td>${d.label}</td>
+                        <td>${d.missions}</td>
+                        <td>${(d.revenus || 0).toFixed(2)}€</td>
+                        <td>${(d.couts || 0).toFixed(2)}€</td>
+                        <td class="${d.marge >= 0 ? 'text-success' : 'text-danger'}">${(d.marge || 0).toFixed(2)}€</td>
+                        <td>${tauxMarge}%</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Mettre à jour le graphique
+        updateChart(data);
+
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors du chargement des données');
+    }
+}
+
+function updateChart(data) {
+    const ctx = document.getElementById('margeChart').getContext('2d');
+
+    if (margeChart) {
+        margeChart.destroy();
+    }
+
+    margeChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(d => d.label),
+            datasets: [
+                {
+                    label: 'Revenus',
+                    data: data.map(d => d.revenus),
+                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: 'Coûts',
+                    data: data.map(d => d.couts),
+                    backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: 'Marge',
+                    data: data.map(d => d.marge),
+                    backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return value + '€';
+                        }
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + '€';
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+</script>
+{% endblock %}

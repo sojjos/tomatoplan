@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+
+{% block title %}Chauffeurs - TomatoPlan Web{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-people"></i> Gestion des Chauffeurs</h1>
+    </div>
+</div>
+
+{% if can_manage %}
+<div class="row mb-3">
+    <div class="col-md-6">
+        <button class="btn btn-primary" onclick="openChauffeurModal()">
+            <i class="bi bi-plus-circle"></i> Nouveau chauffeur
+        </button>
+    </div>
+    <div class="col-md-6 text-end">
+        <div class="form-check form-switch d-inline-block">
+            <input class="form-check-input" type="checkbox" id="showInactifs" {{ 'checked' if not actifs_only else '' }} onchange="toggleInactifs()">
+            <label class="form-check-label" for="showInactifs">Afficher inactifs</label>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Nom</th>
+                                <th>SST</th>
+                                <th>Statut</th>
+                                <th>Infos</th>
+                                {% if can_manage %}
+                                <th>Actions</th>
+                                {% endif %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for chauffeur in chauffeurs %}
+                            <tr>
+                                <td><strong>{{ chauffeur.nom }}</strong></td>
+                                <td>{{ chauffeur.sst or '-' }}</td>
+                                <td>
+                                    {% if chauffeur.actif %}
+                                        <span class="badge bg-success">Actif</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Inactif</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ (chauffeur.infos[:50] + '...') if chauffeur.infos and chauffeur.infos|length > 50 else (chauffeur.infos or '-') }}</td>
+                                {% if can_manage %}
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary" onclick='editChauffeur({{ chauffeur.to_dict()|tojson }})' title="Modifier">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    {% if not chauffeur.actif %}
+                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteChauffeur('{{ chauffeur.id }}', '{{ chauffeur.nom }}')" title="Supprimer">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                    {% endif %}
+                                </td>
+                                {% endif %}
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="{{ '5' if can_manage else '4' }}" class="text-center">Aucun chauffeur trouvé</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if can_manage %}
+<!-- Modal Chauffeur -->
+<div class="modal fade" id="chauffeurModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="chauffeurModalTitle">Nouveau chauffeur</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="chauffeurForm">
+                    <input type="hidden" id="chauffeurId">
+                    <div class="mb-3">
+                        <label for="chauffeurNom" class="form-label">Nom *</label>
+                        <input type="text" class="form-control" id="chauffeurNom" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="chauffeurSST" class="form-label">SST</label>
+                        <input type="text" class="form-control" id="chauffeurSST">
+                    </div>
+                    <div class="mb-3">
+                        <label for="chauffeurInfos" class="form-label">Informations</label>
+                        <textarea class="form-control" id="chauffeurInfos" rows="3"></textarea>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="chauffeurActif" checked>
+                        <label class="form-check-label" for="chauffeurActif">Actif</label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="saveChauffeur()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let chauffeurModal;
+
+document.addEventListener('DOMContentLoaded', function() {
+    chauffeurModal = new bootstrap.Modal(document.getElementById('chauffeurModal'));
+});
+
+function toggleInactifs() {
+    const checked = document.getElementById('showInactifs').checked;
+    window.location.href = '/chauffeurs?actifs=' + (checked ? 'false' : 'true');
+}
+
+function openChauffeurModal() {
+    document.getElementById('chauffeurModalTitle').textContent = 'Nouveau chauffeur';
+    document.getElementById('chauffeurForm').reset();
+    document.getElementById('chauffeurId').value = '';
+    document.getElementById('chauffeurActif').checked = true;
+    chauffeurModal.show();
+}
+
+function editChauffeur(chauffeur) {
+    document.getElementById('chauffeurModalTitle').textContent = 'Modifier chauffeur';
+    document.getElementById('chauffeurId').value = chauffeur.id;
+    document.getElementById('chauffeurNom').value = chauffeur.nom;
+    document.getElementById('chauffeurSST').value = chauffeur.sst || '';
+    document.getElementById('chauffeurInfos').value = chauffeur.infos || '';
+    document.getElementById('chauffeurActif').checked = chauffeur.actif;
+    chauffeurModal.show();
+}
+
+async function saveChauffeur() {
+    const id = document.getElementById('chauffeurId').value;
+    const data = {
+        nom: document.getElementById('chauffeurNom').value,
+        sst: document.getElementById('chauffeurSST').value,
+        infos: document.getElementById('chauffeurInfos').value,
+        actif: document.getElementById('chauffeurActif').checked
+    };
+
+    if (!data.nom) {
+        alert('Le nom est obligatoire');
+        return;
+    }
+
+    try {
+        const url = id ? \`/chauffeurs/\${id}/update\` : '/chauffeurs/create';
+        const method = id ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            const error = await response.json();
+            alert('Erreur: ' + (error.error || 'Erreur inconnue'));
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors de l\'enregistrement');
+    }
+}
+
+async function deleteChauffeur(id, nom) {
+    if (!confirm(\`Supprimer définitivement le chauffeur "\${nom}" ?\`)) return;
+
+    try {
+        const response = await fetch(\`/chauffeurs/\${id}/delete\`, {method: 'DELETE'});
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            alert('Erreur lors de la suppression');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors de la suppression');
+    }
+}
+</script>
+{% endif %}
+
+{% endblock %}

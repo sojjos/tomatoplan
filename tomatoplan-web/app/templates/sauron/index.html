@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}SAURON - TomatoPlan Web{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-eye"></i> SAURON - Logs d'activité</h1>
+        <p class="text-muted">Système de surveillance et d'audit des actions</p>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-3">
+        <input type="text" class="form-control" id="filterUser" placeholder="Filtrer par utilisateur">
+    </div>
+    <div class="col-md-2">
+        <select class="form-select" id="filterAction">
+            <option value="">Toutes les actions</option>
+            <option value="CREATE">CREATE</option>
+            <option value="EDIT">EDIT</option>
+            <option value="DELETE">DELETE</option>
+            <option value="LOGIN">LOGIN</option>
+            <option value="LOGOUT">LOGOUT</option>
+        </select>
+    </div>
+    <div class="col-md-2">
+        <select class="form-select" id="filterEntity">
+            <option value="">Tous les types</option>
+            <option value="Mission">Mission</option>
+            <option value="Chauffeur">Chauffeur</option>
+            <option value="Voyage">Voyage</option>
+            <option value="User">User</option>
+        </select>
+    </div>
+    <div class="col-md-2">
+        <input type="date" class="form-control" id="filterDate">
+    </div>
+    <div class="col-md-3">
+        <button class="btn btn-primary w-100" onclick="loadLogs(1)">Filtrer</button>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Date/Heure</th>
+                                <th>Utilisateur</th>
+                                <th>Action</th>
+                                <th>Type</th>
+                                <th>IP</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logsBody">
+                            <tr>
+                                <td colspan="6" class="text-center">
+                                    <div class="spinner-border" role="status">
+                                        <span class="visually-hidden">Chargement...</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <nav>
+                    <ul class="pagination justify-content-center" id="pagination"></ul>
+                </nav>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Détails -->
+<div class="modal fade" id="detailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Détails du log</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <pre id="detailsContent" style="max-height: 400px; overflow: auto;"></pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let detailsModal;
+let currentPage = 1;
+
+document.addEventListener('DOMContentLoaded', function() {
+    detailsModal = new bootstrap.Modal(document.getElementById('detailsModal'));
+    loadLogs(1);
+});
+
+async function loadLogs(page) {
+    currentPage = page;
+    const tbody = document.getElementById('logsBody');
+    
+    const filters = {
+        page: page,
+        user: document.getElementById('filterUser').value,
+        action: document.getElementById('filterAction').value,
+        entity_type: document.getElementById('filterEntity').value,
+        date: document.getElementById('filterDate').value
+    };
+
+    const params = new URLSearchParams();
+    Object.keys(filters).forEach(key => {
+        if (filters[key]) params.append(key, filters[key]);
+    });
+
+    try {
+        const response = await fetch(\`/sauron/api/logs?\${params}\`);
+        const data = await response.json();
+
+        if (data.logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center">Aucun log trouvé</td></tr>';
+            document.getElementById('pagination').innerHTML = '';
+            return;
+        }
+
+        tbody.innerHTML = data.logs.map(log => {
+            const date = new Date(log.timestamp);
+            const actionBadge = {
+                'CREATE': 'success',
+                'EDIT': 'warning',
+                'DELETE': 'danger',
+                'LOGIN': 'info',
+                'LOGOUT': 'secondary'
+            }[log.action] || 'primary';
+
+            return \`
+                <tr>
+                    <td>\${date.toLocaleString('fr-FR')}</td>
+                    <td>\${log.username || 'Unknown'}</td>
+                    <td><span class="badge bg-\${actionBadge}">\${log.action}</span></td>
+                    <td>\${log.entity_type}</td>
+                    <td>\${log.ip_address || '-'}</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-info" onclick='showDetails(\${JSON.stringify(log).replace(/'/g, "&apos;")})'>
+                            <i class="bi bi-info-circle"></i>
+                        </button>
+                    </td>
+                </tr>
+            \`;
+        }).join('');
+
+        // Pagination
+        updatePagination(data.page, data.total_pages);
+
+    } catch (error) {
+        console.error('Erreur:', error);
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Erreur de chargement</td></tr>';
+    }
+}
+
+function updatePagination(current, total) {
+    const pagination = document.getElementById('pagination');
+    let html = '';
+
+    if (current > 1) {
+        html += \`<li class="page-item"><a class="page-link" href="#" onclick="loadLogs(\${current - 1}); return false;">Précédent</a></li>\`;
+    }
+
+    for (let i = Math.max(1, current - 2); i <= Math.min(total, current + 2); i++) {
+        html += \`<li class="page-item \${i === current ? 'active' : ''}"><a class="page-link" href="#" onclick="loadLogs(\${i}); return false;">\${i}</a></li>\`;
+    }
+
+    if (current < total) {
+        html += \`<li class="page-item"><a class="page-link" href="#" onclick="loadLogs(\${current + 1}); return false;">Suivant</a></li>\`;
+    }
+
+    pagination.innerHTML = html;
+}
+
+function showDetails(log) {
+    document.getElementById('detailsContent').textContent = JSON.stringify(log, null, 2);
+    detailsModal.show();
+}
+</script>
+
+{% endblock %}

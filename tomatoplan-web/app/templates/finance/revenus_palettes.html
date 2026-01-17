@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+
+{% block title %}Revenus par Palettes - TomatoPlan Web{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-box-seam"></i> Grille de Revenus par Palettes</h1>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-6">
+        <button class="btn btn-primary" onclick="openRevenuModal()">
+            <i class="bi bi-plus-circle"></i> Nouveau palier
+        </button>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Palettes Min</th>
+                                <th>Palettes Max</th>
+                                <th>Revenu (€)</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="revenusBody">
+                            <tr><td colspan="4" class="text-center">Chargement...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Revenu -->
+<div class="modal fade" id="revenuModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Nouveau palier de revenu</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="revenuForm">
+                    <input type="hidden" id="revenuId">
+                    <div class="mb-3">
+                        <label for="revenuPalMin" class="form-label">Palettes minimum *</label>
+                        <input type="number" class="form-control" id="revenuPalMin" min="0" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="revenuPalMax" class="form-label">Palettes maximum *</label>
+                        <input type="number" class="form-control" id="revenuPalMax" min="0" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="revenuMontant" class="form-label">Revenu (€) *</label>
+                        <input type="number" class="form-control" id="revenuMontant" step="0.01" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="saveRevenu()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let revenuModal;
+
+document.addEventListener('DOMContentLoaded', function() {
+    revenuModal = new bootstrap.Modal(document.getElementById('revenuModal'));
+    loadRevenus();
+});
+
+async function loadRevenus() {
+    const tbody = document.getElementById('revenusBody');
+
+    try {
+        const response = await fetch('/finance/api/revenus_palettes');
+        const revenus = await response.json();
+
+        if (revenus.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center">Aucun palier défini</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = revenus.map(r => `
+            <tr>
+                <td>${r.palettes_min}</td>
+                <td>${r.palettes_max}</td>
+                <td>${(r.revenu || 0).toFixed(2)}€</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="editRevenu(${r.id})" title="Modifier">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteRevenu(${r.id})" title="Supprimer">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Erreur:', error);
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Erreur de chargement</td></tr>';
+    }
+}
+
+function openRevenuModal() {
+    document.getElementById('revenuForm').reset();
+    document.getElementById('revenuId').value = '';
+    revenuModal.show();
+}
+
+async function editRevenu(id) {
+    try {
+        const response = await fetch(`/finance/api/revenus_palettes/${id}`);
+        const revenu = await response.json();
+
+        document.getElementById('revenuId').value = revenu.id;
+        document.getElementById('revenuPalMin').value = revenu.palettes_min;
+        document.getElementById('revenuPalMax').value = revenu.palettes_max;
+        document.getElementById('revenuMontant').value = revenu.revenu;
+
+        revenuModal.show();
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors du chargement du palier');
+    }
+}
+
+async function saveRevenu() {
+    const id = document.getElementById('revenuId').value;
+    const data = {
+        palettes_min: parseInt(document.getElementById('revenuPalMin').value),
+        palettes_max: parseInt(document.getElementById('revenuPalMax').value),
+        revenu: parseFloat(document.getElementById('revenuMontant').value)
+    };
+
+    if (data.palettes_min > data.palettes_max) {
+        alert('Le minimum ne peut pas être supérieur au maximum');
+        return;
+    }
+
+    try {
+        const url = id ? `/finance/revenus_palettes/${id}/update` : '/finance/revenus_palettes/create';
+        const method = id ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            revenuModal.hide();
+            loadRevenus();
+        } else {
+            const error = await response.json();
+            alert('Erreur: ' + (error.error || 'Erreur inconnue'));
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors de l\'enregistrement');
+    }
+}
+
+async function deleteRevenu(id) {
+    if (!confirm('Supprimer ce palier ?')) return;
+
+    try {
+        const response = await fetch(`/finance/revenus_palettes/${id}/delete`, {method: 'DELETE'});
+        if (response.ok) {
+            loadRevenus();
+        } else {
+            alert('Erreur lors de la suppression');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors de la suppression');
+    }
+}
+</script>
+{% endblock %}

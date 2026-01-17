@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block title %}Tarifs SST - TomatoPlan Web{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-tag"></i> Tarifs par SST</h1>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-6">
+        <button class="btn btn-primary" onclick="openTarifModal()">
+            <i class="bi bi-plus-circle"></i> Nouveau tarif
+        </button>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>SST</th>
+                                <th>Voyage</th>
+                                <th>Coût</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tarifsBody">
+                            <tr><td colspan="4" class="text-center">Chargement...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Tarif -->
+<div class="modal fade" id="tarifModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Nouveau tarif</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="tarifForm">
+                    <input type="hidden" id="tarifId">
+                    <div class="mb-3">
+                        <label for="tarifSST" class="form-label">SST *</label>
+                        <select class="form-select" id="tarifSST" required>
+                            <option value="">Sélectionnez...</option>
+                            {% for sst in ssts %}
+                            <option value="{{ sst.id }}">{{ sst.nom }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="tarifVoyage" class="form-label">Voyage *</label>
+                        <select class="form-select" id="tarifVoyage" required>
+                            <option value="">Sélectionnez...</option>
+                            {% for voyage in voyages %}
+                            <option value="{{ voyage.id }}">{{ voyage.nom }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="tarifCout" class="form-label">Coût (€) *</label>
+                        <input type="number" class="form-control" id="tarifCout" step="0.01" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="saveTarif()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let tarifModal;
+
+document.addEventListener('DOMContentLoaded', function() {
+    tarifModal = new bootstrap.Modal(document.getElementById('tarifModal'));
+    loadTarifs();
+});
+
+async function loadTarifs() {
+    const tbody = document.getElementById('tarifsBody');
+
+    try {
+        const response = await fetch('/finance/api/tarifs_sst');
+        const tarifs = await response.json();
+
+        if (tarifs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center">Aucun tarif défini</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = tarifs.map(t => `
+            <tr>
+                <td>${t.sst_nom}</td>
+                <td>${t.voyage_nom}</td>
+                <td>${(t.cout || 0).toFixed(2)}€</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="editTarif(${t.id})" title="Modifier">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteTarif(${t.id})" title="Supprimer">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Erreur:', error);
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Erreur de chargement</td></tr>';
+    }
+}
+
+function openTarifModal() {
+    document.getElementById('tarifForm').reset();
+    document.getElementById('tarifId').value = '';
+    tarifModal.show();
+}
+
+async function editTarif(id) {
+    try {
+        const response = await fetch(`/finance/api/tarifs_sst/${id}`);
+        const tarif = await response.json();
+
+        document.getElementById('tarifId').value = tarif.id;
+        document.getElementById('tarifSST').value = tarif.sst_id;
+        document.getElementById('tarifVoyage').value = tarif.voyage_id;
+        document.getElementById('tarifCout').value = tarif.cout;
+
+        tarifModal.show();
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors du chargement du tarif');
+    }
+}
+
+async function saveTarif() {
+    const id = document.getElementById('tarifId').value;
+    const data = {
+        sst_id: parseInt(document.getElementById('tarifSST').value),
+        voyage_id: parseInt(document.getElementById('tarifVoyage').value),
+        cout: parseFloat(document.getElementById('tarifCout').value)
+    };
+
+    if (!data.sst_id || !data.voyage_id || !data.cout) {
+        alert('Tous les champs sont obligatoires');
+        return;
+    }
+
+    try {
+        const url = id ? `/finance/tarifs_sst/${id}/update` : '/finance/tarifs_sst/create';
+        const method = id ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            tarifModal.hide();
+            loadTarifs();
+        } else {
+            const error = await response.json();
+            alert('Erreur: ' + (error.error || 'Erreur inconnue'));
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors de l\'enregistrement');
+    }
+}
+
+async function deleteTarif(id) {
+    if (!confirm('Supprimer ce tarif ?')) return;
+
+    try {
+        const response = await fetch(`/finance/tarifs_sst/${id}/delete`, {method: 'DELETE'});
+        if (response.ok) {
+            loadTarifs();
+        } else {
+            alert('Erreur lors de la suppression');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors de la suppression');
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block title %}Utilisateurs - TomatoPlan Web{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-people-fill"></i> Gestion des Utilisateurs</h1>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-12">
+        <button class="btn btn-primary" onclick="openUserModal()">
+            <i class="bi bi-plus-circle"></i> Nouvel utilisateur
+        </button>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Nom d'utilisateur</th>
+                                <th>Nom complet</th>
+                                <th>Email</th>
+                                <th>Rôle</th>
+                                <th>Statut</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in users %}
+                            <tr>
+                                <td><strong>{{ user.username }}</strong></td>
+                                <td>{{ user.full_name or '-' }}</td>
+                                <td>{{ user.email or '-' }}</td>
+                                <td><span class="badge bg-info">{{ roles[user.role]['label'] if user.role in roles else user.role }}</span></td>
+                                <td>
+                                    {% if user.is_active %}
+                                        <span class="badge bg-success">Actif</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Inactif</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary" onclick='editUser({{ user.id|tojson }}, {{ user.username|tojson }}, {{ user.email|tojson }}, {{ user.full_name|tojson }}, {{ user.role|tojson }}, {{ user.is_active|tojson }})' title="Modifier">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-warning" onclick="resetPassword('{{ user.id }}', '{{ user.username }}')" title="Réinitialiser mot de passe">
+                                        <i class="bi bi-key"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal User -->
+<div class="modal fade" id="userModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="userModalTitle">Nouvel utilisateur</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="userForm">
+                    <input type="hidden" id="userId">
+                    <div class="mb-3">
+                        <label for="userUsername" class="form-label">Nom d'utilisateur *</label>
+                        <input type="text" class="form-control" id="userUsername" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="userFullName" class="form-label">Nom complet</label>
+                        <input type="text" class="form-control" id="userFullName">
+                    </div>
+                    <div class="mb-3">
+                        <label for="userEmail" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="userEmail">
+                    </div>
+                    <div class="mb-3" id="passwordDiv">
+                        <label for="userPassword" class="form-label">Mot de passe *</label>
+                        <input type="password" class="form-control" id="userPassword">
+                    </div>
+                    <div class="mb-3">
+                        <label for="userRole" class="form-label">Rôle</label>
+                        <select class="form-select" id="userRole">
+                            {% for role_key, role_info in roles.items() %}
+                            <option value="{{ role_key }}">{{ role_info['label'] }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="userActive" checked>
+                        <label class="form-check-label" for="userActive">Actif</label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="saveUser()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let userModal;
+
+document.addEventListener('DOMContentLoaded', function() {
+    userModal = new bootstrap.Modal(document.getElementById('userModal'));
+});
+
+function openUserModal() {
+    document.getElementById('userModalTitle').textContent = 'Nouvel utilisateur';
+    document.getElementById('userForm').reset();
+    document.getElementById('userId').value = '';
+    document.getElementById('userUsername').disabled = false;
+    document.getElementById('passwordDiv').style.display = 'block';
+    document.getElementById('userActive').checked = true;
+    userModal.show();
+}
+
+function editUser(id, username, email, fullName, role, isActive) {
+    document.getElementById('userModalTitle').textContent = 'Modifier utilisateur';
+    document.getElementById('userId').value = id;
+    document.getElementById('userUsername').value = username;
+    document.getElementById('userUsername').disabled = true;
+    document.getElementById('userEmail').value = email || '';
+    document.getElementById('userFullName').value = fullName || '';
+    document.getElementById('userRole').value = role;
+    document.getElementById('userActive').checked = isActive;
+    document.getElementById('passwordDiv').style.display = 'none';
+    userModal.show();
+}
+
+async function saveUser() {
+    const id = document.getElementById('userId').value;
+    const data = {
+        username: document.getElementById('userUsername').value,
+        email: document.getElementById('userEmail').value,
+        full_name: document.getElementById('userFullName').value,
+        role: document.getElementById('userRole').value,
+        is_active: document.getElementById('userActive').checked
+    };
+
+    if (!id) {
+        data.password = document.getElementById('userPassword').value;
+        if (!data.password) {
+            alert('Le mot de passe est obligatoire');
+            return;
+        }
+    }
+
+    if (!data.username) {
+        alert('Le nom d\'utilisateur est obligatoire');
+        return;
+    }
+
+    try {
+        const url = id ? \`/admin/users/\${id}/update\` : '/admin/users/create';
+        const method = id ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            const error = await response.json();
+            alert('Erreur: ' + (error.error || 'Erreur inconnue'));
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors de l\'enregistrement');
+    }
+}
+
+async function resetPassword(id, username) {
+    const newPassword = prompt(\`Nouveau mot de passe pour \${username}:\`);
+    if (!newPassword) return;
+
+    try {
+        const response = await fetch(\`/admin/users/\${id}/reset-password\`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({password: newPassword})
+        });
+
+        if (response.ok) {
+            alert('Mot de passe réinitialisé avec succès');
+        } else {
+            alert('Erreur lors de la réinitialisation');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors de la réinitialisation');
+    }
+}
+</script>
+
+{% endblock %}

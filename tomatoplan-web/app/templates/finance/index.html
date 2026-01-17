@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}Finance - TomatoPlan Web{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-cash-stack"></i> Dashboard Financier</h1>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-3">
+        <label>Date début</label>
+        <input type="date" class="form-control" id="startDate" value="{{ start_date }}">
+    </div>
+    <div class="col-md-3">
+        <label>Date fin</label>
+        <input type="date" class="form-control" id="endDate" value="{{ end_date }}">
+    </div>
+    <div class="col-md-3">
+        <label>&nbsp;</label>
+        <button class="btn btn-primary w-100" onclick="filterPeriod()">Appliquer</button>
+    </div>
+    {% if can_manage %}
+    <div class="col-md-3 text-end">
+        <label>&nbsp;</label>
+        <a href="/finance/tarifs" class="btn btn-outline-primary w-100">Gérer les tarifs SST</a>
+    </div>
+    {% endif %}
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <h6 class="mb-0">Revenus totaux</h6>
+                <h3 class="mb-0">{{ "%.2f"|format(stats.total_revenus or 0) }}€</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-danger">
+            <div class="card-body">
+                <h6 class="mb-0">Coûts totaux</h6>
+                <h3 class="mb-0">{{ "%.2f"|format(stats.total_couts or 0) }}€</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <h6 class="mb-0">Marge totale</h6>
+                <h3 class="mb-0">{{ "%.2f"|format(stats.total_marge or 0) }}€</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-info">
+            <div class="card-body">
+                <h6 class="mb-0">Missions</h6>
+                <h3 class="mb-0">{{ stats.total_missions or 0 }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Statistiques par SST</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>SST</th>
+                                <th class="text-end">Missions</th>
+                                <th class="text-end">Revenus</th>
+                                <th class="text-end">Coûts</th>
+                                <th class="text-end">Marge</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for stat in stats_par_sst %}
+                            <tr>
+                                <td>{{ stat.sst }}</td>
+                                <td class="text-end">{{ stat.missions }}</td>
+                                <td class="text-end">{{ "%.2f"|format(stat.revenus or 0) }}€</td>
+                                <td class="text-end">{{ "%.2f"|format(stat.couts or 0) }}€</td>
+                                <td class="text-end {{ 'text-success' if (stat.marge or 0) >= 0 else 'text-danger' }}">
+                                    {{ "%.2f"|format(stat.marge or 0) }}€
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center">Aucune donnée</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Statistiques par Voyage</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Voyage</th>
+                                <th class="text-end">Missions</th>
+                                <th class="text-end">Revenus</th>
+                                <th class="text-end">Coûts</th>
+                                <th class="text-end">Marge</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for stat in stats_par_voyage %}
+                            <tr>
+                                <td>{{ stat.voyage }}</td>
+                                <td class="text-end">{{ stat.missions }}</td>
+                                <td class="text-end">{{ "%.2f"|format(stat.revenus or 0) }}€</td>
+                                <td class="text-end">{{ "%.2f"|format(stat.couts or 0) }}€</td>
+                                <td class="text-end {{ 'text-success' if (stat.marge or 0) >= 0 else 'text-danger' }}">
+                                    {{ "%.2f"|format(stat.marge or 0) }}€
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center">Aucune donnée</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function filterPeriod() {
+    const start = document.getElementById('startDate').value;
+    const end = document.getElementById('endDate').value;
+    window.location.href = `/finance?start=${start}&end=${end}`;
+}
+</script>
+
+{% endblock %}

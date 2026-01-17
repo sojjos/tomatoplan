@@ -113,3 +113,21 @@ def delete(voyage_id):
     db.session.commit()
 
     return jsonify({'success': True})
+
+
+@bp.route('/api/list')
+@login_required
+@permission_required('manage_voyages')
+def api_list():
+    """Liste des voyages pour l'API"""
+    voyages = Voyage.query.order_by(Voyage.code).all()
+    return jsonify([v.to_dict() for v in voyages])
+
+
+@bp.route('/api/<int:voyage_id>')
+@login_required
+@permission_required('manage_voyages')
+def api_get(voyage_id):
+    """Récupérer un voyage par ID"""
+    voyage = Voyage.query.get_or_404(voyage_id)
+    return jsonify(voyage.to_dict())

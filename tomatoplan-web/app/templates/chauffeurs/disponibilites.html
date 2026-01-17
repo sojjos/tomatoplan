@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}Disponibilités - TomatoPlan Web{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-calendar-check"></i> Disponibilités des Chauffeurs</h1>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-6">
+        <input type="date" class="form-control" id="dateDisponibilite" onchange="loadDisponibilites()">
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Chauffeur</th>
+                                <th>SST</th>
+                                <th>Statut</th>
+                                <th>Raison</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="disponibilitesBody">
+                            <tr>
+                                <td colspan="5" class="text-center">Sélectionnez une date</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('dateDisponibilite').value = new Date().toISOString().split('T')[0];
+    loadDisponibilites();
+});
+
+async function loadDisponibilites() {
+    const date = document.getElementById('dateDisponibilite').value;
+    const tbody = document.getElementById('disponibilitesBody');
+
+    if (!date) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center">Sélectionnez une date</td></tr>';
+        return;
+    }
+
+    try {
+        const response = await fetch(`/chauffeurs/api/disponibilites?date=${date}`);
+        const data = await response.json();
+
+        if (data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center">Aucun chauffeur actif</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.map(d => `
+            <tr>
+                <td>${d.chauffeur_nom}</td>
+                <td>${d.sst_nom || '-'}</td>
+                <td>
+                    ${d.disponible ? '<span class="badge bg-success">Disponible</span>' : '<span class="badge bg-danger">Indisponible</span>'}
+                </td>
+                <td>${d.raison || '-'}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="toggleDisponibilite(${d.chauffeur_id}, '${date}', ${!d.disponible})">
+                        ${d.disponible ? 'Marquer indisponible' : 'Marquer disponible'}
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Erreur:', error);
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Erreur de chargement</td></tr>';
+    }
+}
+
+async function toggleDisponibilite(chauffeurId, date, disponible) {
+    let raison = null;
+    if (!disponible) {
+        raison = prompt('Raison de l\'indisponibilité:');
+        if (raison === null) return;
+    }
+
+    try {
+        const response = await fetch('/chauffeurs/api/disponibilites', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                chauffeur_id: chauffeurId,
+                date: date,
+                disponible: disponible,
+                raison: raison
+            })
+        });
+
+        if (response.ok) {
+            loadDisponibilites();
+        } else {
+            alert('Erreur lors de la modification');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors de la modification');
+    }
+}
+</script>
+{% endblock %}

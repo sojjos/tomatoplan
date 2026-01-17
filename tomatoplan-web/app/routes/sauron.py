@@ -155,3 +155,57 @@ def log_detail(log_id):
     """Détail d'un log"""
     log = ActivityLog.query.get_or_404(log_id)
     return render_template('sauron/detail.html', log=log)
+
+
+@bp.route('/api/logs')
+@login_required
+@permission_required('view_sauron')
+def api_logs():
+    """API pour récupérer les logs avec filtres"""
+    # Filtres
+    user_filter = request.args.get('user')
+    action = request.args.get('action')
+    entity_type = request.args.get('entity_type')
+    date_filter = request.args.get('date')
+
+    # Pagination
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+
+    # Construire la requête
+    query = ActivityLog.query
+
+    if user_filter:
+        # Chercher par username
+        user = User.query.filter(User.username.like(f'%{user_filter}%')).first()
+        if user:
+            query = query.filter_by(user_id=user.id)
+
+    if action:
+        query = query.filter_by(action=action)
+
+    if entity_type:
+        query = query.filter_by(entity_type=entity_type)
+
+    if date_filter:
+        try:
+            filter_date = datetime.strptime(date_filter, '%Y-%m-%d').date()
+            next_day = filter_date + timedelta(days=1)
+            query = query.filter(
+                ActivityLog.timestamp >= datetime.combine(filter_date, datetime.min.time()),
+                ActivityLog.timestamp < datetime.combine(next_day, datetime.min.time())
+            )
+        except ValueError:
+            pass
+
+    # Exécuter la requête avec pagination
+    pagination = query.order_by(ActivityLog.timestamp.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+
+    return jsonify({
+        'logs': [log.to_dict() for log in pagination.items],
+        'page': pagination.page,
+        'total_pages': pagination.pages,
+        'total_items': pagination.total
+    })
