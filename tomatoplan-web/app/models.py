@@ -106,8 +106,9 @@ class Chauffeur(db.Model):
     __tablename__ = 'chauffeurs'
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    nom = db.Column(db.String(100), nullable=False, unique=True, index=True)
-    sst = db.Column(db.String(100), nullable=True)
+    nom = db.Column(db.String(100), nullable=False, index=True)
+    prenom = db.Column(db.String(100), nullable=True)
+    sst_id = db.Column(db.Integer, db.ForeignKey('sst.id'), nullable=True, index=True)
     telephone = db.Column(db.String(20), nullable=True)
     actif = db.Column(db.Boolean, default=True)
     infos = db.Column(db.Text, nullable=True)
@@ -115,21 +116,37 @@ class Chauffeur(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relations
+    sst_rel = db.relationship('SST', backref='chauffeurs', foreign_keys=[sst_id])
     disponibilites = db.relationship('DisponibiliteChauffeur', backref='chauffeur', lazy='dynamic', cascade='all, delete-orphan')
+
+    @property
+    def nom_complet(self):
+        """Retourne le nom complet (nom + prénom)"""
+        if self.prenom:
+            return f"{self.nom} {self.prenom}"
+        return self.nom
+
+    @property
+    def sst_nom(self):
+        """Retourne le nom du SST"""
+        return self.sst_rel.nom if self.sst_rel else None
 
     def to_dict(self):
         """Convertit en dictionnaire"""
         return {
             'id': self.id,
             'nom': self.nom,
-            'sst': self.sst,
+            'prenom': self.prenom,
+            'nom_complet': self.nom_complet,
+            'sst_id': self.sst_id,
+            'sst_nom': self.sst_nom,
             'telephone': self.telephone,
             'actif': self.actif,
             'infos': self.infos
         }
 
     def __repr__(self):
-        return f'<Chauffeur {self.nom}>'
+        return f'<Chauffeur {self.nom_complet}>'
 
 
 class DisponibiliteChauffeur(db.Model):

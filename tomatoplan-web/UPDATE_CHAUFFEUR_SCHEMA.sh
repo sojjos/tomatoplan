@@ -1,12 +1,12 @@
 #!/bin/bash
 #
-# Script de mise à jour du schéma de base de données
-# Ajoute le champ telephone aux tables SST et Chauffeurs
+# Script de mise à jour du schéma chauffeur
+# Ajoute les champs prenom et sst_id
 #
 
 set -e
 
-echo "🔧 Mise à jour du schéma de base de données..."
+echo "🔧 Mise à jour du schéma chauffeur..."
 
 # Obtenir le répertoire du script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -38,31 +38,10 @@ with app.app_context():
     cursor = conn.cursor()
 
     try:
-        # Vérifier et ajouter telephone à la table sst
-        cursor.execute("PRAGMA table_info(sst)")
-        sst_columns = [column[1] for column in cursor.fetchall()]
-
-        if 'telephone' not in sst_columns:
-            print("  ➕ Ajout de la colonne 'telephone' à la table 'sst'...")
-            cursor.execute("ALTER TABLE sst ADD COLUMN telephone VARCHAR(20)")
-            conn.commit()
-            print("  ✅ Colonne 'telephone' ajoutée à 'sst'")
-        else:
-            print("  ✓ La colonne 'telephone' existe déjà dans 'sst'")
-
-        # Vérifier et ajouter telephone à la table chauffeurs
+        # Vérifier et ajouter prenom à la table chauffeurs
         cursor.execute("PRAGMA table_info(chauffeurs)")
         chauffeurs_columns = [column[1] for column in cursor.fetchall()]
 
-        if 'telephone' not in chauffeurs_columns:
-            print("  ➕ Ajout de la colonne 'telephone' à la table 'chauffeurs'...")
-            cursor.execute("ALTER TABLE chauffeurs ADD COLUMN telephone VARCHAR(20)")
-            conn.commit()
-            print("  ✅ Colonne 'telephone' ajoutée à 'chauffeurs'")
-        else:
-            print("  ✓ La colonne 'telephone' existe déjà dans 'chauffeurs'")
-
-        # Vérifier et ajouter prenom à la table chauffeurs
         if 'prenom' not in chauffeurs_columns:
             print("  ➕ Ajout de la colonne 'prenom' à la table 'chauffeurs'...")
             cursor.execute("ALTER TABLE chauffeurs ADD COLUMN prenom VARCHAR(100)")
@@ -72,9 +51,6 @@ with app.app_context():
             print("  ✓ La colonne 'prenom' existe déjà dans 'chauffeurs'")
 
         # Vérifier et ajouter sst_id à la table chauffeurs
-        cursor.execute("PRAGMA table_info(chauffeurs)")
-        chauffeurs_columns = [column[1] for column in cursor.fetchall()]
-
         if 'sst_id' not in chauffeurs_columns:
             print("  ➕ Ajout de la colonne 'sst_id' à la table 'chauffeurs'...")
             cursor.execute("ALTER TABLE chauffeurs ADD COLUMN sst_id INTEGER")
@@ -97,6 +73,7 @@ with app.app_context():
                         "UPDATE chauffeurs SET sst_id = ? WHERE id = ?",
                         (sst_id, chauffeur_id)
                     )
+                    print(f"    ✓ Chauffeur {chauffeur_id}: {sst_nom} → SST ID {sst_id}")
 
             conn.commit()
             print(f"  ✅ {len(migrations)} chauffeurs migrés vers le nouveau système SST")
@@ -108,6 +85,8 @@ with app.app_context():
     except Exception as e:
         conn.rollback()
         print(f"\n❌ Erreur lors de la migration: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
     finally:
         conn.close()

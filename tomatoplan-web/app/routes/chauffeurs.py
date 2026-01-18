@@ -17,6 +17,7 @@ bp = Blueprint('chauffeurs', __name__, url_prefix='/chauffeurs')
 @permission_required('view_drivers')
 def index():
     """Liste des chauffeurs"""
+    from app.models import SST
     actifs_only = request.args.get('actifs', 'true') == 'true'
 
     if actifs_only:
@@ -24,11 +25,15 @@ def index():
     else:
         chauffeurs = Chauffeur.query.order_by(Chauffeur.nom).all()
 
+    # Récupérer tous les SST actifs pour le dropdown
+    sst_list = SST.query.filter_by(actif=True).order_by(SST.nom).all()
+
     can_manage = current_user.has_permission('manage_drivers')
 
     return render_template(
         'chauffeurs/index.html',
         chauffeurs=chauffeurs,
+        sst_list=sst_list,
         can_manage=can_manage,
         actifs_only=actifs_only
     )
@@ -41,14 +46,20 @@ def create():
     """Créer un nouveau chauffeur"""
     data = request.get_json()
 
-    # Vérifier si le nom existe déjà
-    existing = Chauffeur.query.filter_by(nom=data['nom']).first()
-    if existing:
-        return jsonify({'error': 'Un chauffeur avec ce nom existe déjà'}), 400
+    # Si SST fourni, vérifier qu'il est actif
+    sst_id = data.get('sst_id')
+    if sst_id:
+        from app.models import SST
+        sst = SST.query.get(sst_id)
+        if not sst:
+            return jsonify({'error': 'SST non trouvé'}), 400
+        if not sst.actif:
+            return jsonify({'error': 'Impossible de créer un chauffeur pour un SST désactivé'}), 400
 
     chauffeur = Chauffeur(
         nom=data['nom'],
-        sst=data.get('sst'),
+        prenom=data.get('prenom'),
+        sst_id=sst_id,
         telephone=data.get('telephone'),
         actif=data.get('actif', True),
         infos=data.get('infos')
@@ -86,15 +97,31 @@ def update(chauffeur_id):
     old_data = chauffeur.to_dict()
 
     data = request.get_json()
-    if 'nom' in data and data['nom'] != chauffeur.nom:
-        # Vérifier si le nouveau nom existe déjà
-        existing = Chauffeur.query.filter_by(nom=data['nom']).first()
-        if existing:
-            return jsonify({'error': 'Un chauffeur avec ce nom existe déjà'}), 400
-        chauffeur.nom = data['nom']
 
-    if 'sst' in data:
-        chauffeur.sst = data['sst']
+    # Vérifier si le SST est actif si on tente de réactiver le chauffeur
+    if 'actif' in data and data['actif'] and not chauffeur.actif:
+        if chauffeur.sst_id:
+            from app.models import SST
+            sst = SST.query.get(chauffeur.sst_id)
+            if sst and not sst.actif:
+                return jsonify({'error': 'Impossible de réactiver un chauffeur dont le SST est désactivé'}), 400
+
+    # Vérifier si on change de SST
+    if 'sst_id' in data:
+        new_sst_id = data['sst_id']
+        if new_sst_id:
+            from app.models import SST
+            sst = SST.query.get(new_sst_id)
+            if not sst:
+                return jsonify({'error': 'SST non trouvé'}), 400
+            if not sst.actif:
+                return jsonify({'error': 'Impossible d\'assigner un chauffeur à un SST désactivé'}), 400
+        chauffeur.sst_id = new_sst_id
+
+    if 'nom' in data:
+        chauffeur.nom = data['nom']
+    if 'prenom' in data:
+        chauffeur.prenom = data['prenom']
     if 'telephone' in data:
         chauffeur.telephone = data['telephone']
     if 'actif' in data:

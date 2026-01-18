@@ -33,7 +33,7 @@
                     <table class="table table-hover">
                         <thead>
                             <tr>
-                                <th>Nom</th>
+                                <th>Nom complet</th>
                                 <th>SST</th>
                                 <th>Téléphone</th>
                                 <th>Statut</th>
@@ -46,8 +46,8 @@
                         <tbody>
                             {% for chauffeur in chauffeurs %}
                             <tr>
-                                <td><strong>{{ chauffeur.nom }}</strong></td>
-                                <td>{{ chauffeur.sst or '-' }}</td>
+                                <td><strong>{{ chauffeur.nom_complet }}</strong></td>
+                                <td>{{ chauffeur.sst_nom or '-' }}</td>
                                 <td>{{ chauffeur.telephone or '-' }}</td>
                                 <td>
                                     {% if chauffeur.actif %}
@@ -95,13 +95,24 @@
             <div class="modal-body">
                 <form id="chauffeurForm">
                     <input type="hidden" id="chauffeurId">
-                    <div class="mb-3">
-                        <label for="chauffeurNom" class="form-label">Nom *</label>
-                        <input type="text" class="form-control" id="chauffeurNom" required>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="chauffeurNom" class="form-label">Nom *</label>
+                            <input type="text" class="form-control" id="chauffeurNom" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="chauffeurPrenom" class="form-label">Prénom</label>
+                            <input type="text" class="form-control" id="chauffeurPrenom">
+                        </div>
                     </div>
                     <div class="mb-3">
                         <label for="chauffeurSST" class="form-label">SST</label>
-                        <input type="text" class="form-control" id="chauffeurSST">
+                        <select class="form-select" id="chauffeurSST">
+                            <option value="">-- Aucun SST --</option>
+                            {% for sst in sst_list %}
+                            <option value="{{ sst.id }}">{{ sst.nom }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
                     <div class="mb-3">
                         <label for="chauffeurTelephone" class="form-label">Téléphone</label>
@@ -149,7 +160,8 @@ function editChauffeur(chauffeur) {
     document.getElementById('chauffeurModalTitle').textContent = 'Modifier chauffeur';
     document.getElementById('chauffeurId').value = chauffeur.id;
     document.getElementById('chauffeurNom').value = chauffeur.nom;
-    document.getElementById('chauffeurSST').value = chauffeur.sst || '';
+    document.getElementById('chauffeurPrenom').value = chauffeur.prenom || '';
+    document.getElementById('chauffeurSST').value = chauffeur.sst_id || '';
     document.getElementById('chauffeurTelephone').value = chauffeur.telephone || '';
     document.getElementById('chauffeurInfos').value = chauffeur.infos || '';
     document.getElementById('chauffeurActif').checked = chauffeur.actif;
@@ -158,9 +170,11 @@ function editChauffeur(chauffeur) {
 
 async function saveChauffeur() {
     const id = document.getElementById('chauffeurId').value;
+    const sstValue = document.getElementById('chauffeurSST').value;
     const data = {
         nom: document.getElementById('chauffeurNom').value,
-        sst: document.getElementById('chauffeurSST').value,
+        prenom: document.getElementById('chauffeurPrenom').value,
+        sst_id: sstValue ? parseInt(sstValue) : null,
         telephone: document.getElementById('chauffeurTelephone').value,
         infos: document.getElementById('chauffeurInfos').value,
         actif: document.getElementById('chauffeurActif').checked

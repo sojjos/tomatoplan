@@ -233,7 +233,28 @@ def update_sst(sst_id):
         sst.emails = json.dumps(emails_list)
 
     if 'actif' in data:
+        was_active = sst.actif
         sst.actif = data['actif']
+
+        # Si on désactive le SST, désactiver tous ses chauffeurs
+        if was_active and not sst.actif:
+            from app.models import Chauffeur
+            chauffeurs_desactives = Chauffeur.query.filter_by(sst_id=sst.id, actif=True).all()
+            for chauffeur in chauffeurs_desactives:
+                chauffeur.actif = False
+
+            if chauffeurs_desactives:
+                db.session.add(ActivityLog(
+                    user_id=current_user.id,
+                    action='CASCADE_DEACTIVATE',
+                    entity_type='Chauffeur',
+                    details=json.dumps({
+                        'reason': f'SST {sst.nom} désactivé',
+                        'count': len(chauffeurs_desactives),
+                        'chauffeurs': [c.nom_complet for c in chauffeurs_desactives]
+                    }),
+                    ip_address=request.remote_addr
+                ))
 
     db.session.commit()
 

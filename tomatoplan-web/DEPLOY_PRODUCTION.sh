@@ -74,6 +74,47 @@ with app.app_context():
         else:
             print("   ✓ La colonne 'telephone' existe déjà dans 'chauffeurs'")
 
+        # Vérifier et ajouter prenom à la table chauffeurs
+        if 'prenom' not in chauffeurs_columns:
+            print("   ➕ Ajout de la colonne 'prenom' à la table 'chauffeurs'...")
+            cursor.execute("ALTER TABLE chauffeurs ADD COLUMN prenom VARCHAR(100)")
+            conn.commit()
+            print("   ✅ Colonne 'prenom' ajoutée à 'chauffeurs'")
+        else:
+            print("   ✓ La colonne 'prenom' existe déjà dans 'chauffeurs'")
+
+        # Vérifier et ajouter sst_id à la table chauffeurs
+        cursor.execute("PRAGMA table_info(chauffeurs)")
+        chauffeurs_columns = [column[1] for column in cursor.fetchall()]
+
+        if 'sst_id' not in chauffeurs_columns:
+            print("   ➕ Ajout de la colonne 'sst_id' à la table 'chauffeurs'...")
+            cursor.execute("ALTER TABLE chauffeurs ADD COLUMN sst_id INTEGER")
+            conn.commit()
+            print("   ✅ Colonne 'sst_id' ajoutée à 'chauffeurs'")
+
+            # Migrer les données de sst vers sst_id
+            print("   🔄 Migration des données SST...")
+            cursor.execute("""
+                SELECT chauffeurs.id, chauffeurs.sst, sst.id
+                FROM chauffeurs
+                LEFT JOIN sst ON sst.nom = chauffeurs.sst
+                WHERE chauffeurs.sst IS NOT NULL AND chauffeurs.sst != ''
+            """)
+            migrations = cursor.fetchall()
+
+            for chauffeur_id, sst_nom, sst_id in migrations:
+                if sst_id:
+                    cursor.execute(
+                        "UPDATE chauffeurs SET sst_id = ? WHERE id = ?",
+                        (sst_id, chauffeur_id)
+                    )
+
+            conn.commit()
+            print(f"   ✅ {len(migrations)} chauffeurs migrés vers le nouveau système SST")
+        else:
+            print("   ✓ La colonne 'sst_id' existe déjà dans 'chauffeurs'")
+
         print("   ✅ Migration terminée avec succès!")
 
     except Exception as e:
