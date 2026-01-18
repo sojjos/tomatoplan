@@ -156,7 +156,7 @@ def reset_password(user_id):
 @bp.route('/sst')
 @login_required
 @permission_required('manage_rights')
-def sst_list():
+def sst():
     """Liste des SST"""
     sst_all = SST.query.order_by(SST.nom).all()
     return render_template('admin/sst.html', sst_list=sst_all)
