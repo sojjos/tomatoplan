@@ -151,54 +151,139 @@ def reset_password(user_id):
     })
 
 
+# ===== GESTION DES SST (Sous-traitants) =====
+
 @bp.route('/sst')
 @login_required
-@role_required('admin')
-def sst():
-    """Gestion des SST"""
-    sst_list = SST.query.order_by(SST.nom).all()
-    return render_template('admin/sst.html', sst_list=sst_list)
+@permission_required('manage_rights')
+def sst_list():
+    """Liste des SST"""
+    sst_all = SST.query.order_by(SST.nom).all()
+    return render_template('admin/sst.html', sst_list=sst_all)
 
 
 @bp.route('/sst/create', methods=['POST'])
 @login_required
-@role_required('admin')
+@permission_required('manage_rights')
 def create_sst():
     """Créer un nouveau SST"""
     data = request.get_json()
 
+    # Vérifier si le SST existe déjà
     existing = SST.query.filter_by(nom=data['nom']).first()
     if existing:
         return jsonify({'error': 'Un SST avec ce nom existe déjà'}), 400
 
+    # Parser les emails (format: "email1, email2, email3")
+    emails_str = data.get('emails', '')
+    emails_list = [e.strip() for e in emails_str.split(',') if e.strip()]
+
     sst = SST(
         nom=data['nom'],
-        actif=data.get('actif', True),
-        emails=json.dumps(data.get('emails', []))
+        telephone=data.get('telephone'),
+        emails=json.dumps(emails_list),
+        actif=data.get('actif', True)
     )
 
     db.session.add(sst)
     db.session.commit()
 
-    return jsonify({'success': True, 'sst': sst.to_dict()})
+    log = ActivityLog(
+        user_id=current_user.id,
+        action='CREATE',
+        entity_type='SST',
+        entity_id=str(sst.id),
+        details=json.dumps(sst.to_dict()),
+        ip_address=request.remote_addr
+    )
+    db.session.add(log)
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'sst': sst.to_dict(),
+        'message': 'SST créé avec succès'
+    })
 
 
 @bp.route('/sst/<int:sst_id>/update', methods=['PUT'])
 @login_required
-@role_required('admin')
+@permission_required('manage_rights')
 def update_sst(sst_id):
     """Mettre à jour un SST"""
     sst = SST.query.get_or_404(sst_id)
+    old_data = sst.to_dict()
 
     data = request.get_json()
+
+    if 'nom' in data:
+        # Vérifier si le nouveau nom existe déjà
+        if data['nom'] != sst.nom:
+            existing = SST.query.filter_by(nom=data['nom']).first()
+            if existing:
+                return jsonify({'error': 'Un SST avec ce nom existe déjà'}), 400
+        sst.nom = data['nom']
+
+    if 'telephone' in data:
+        sst.telephone = data['telephone']
+
+    if 'emails' in data:
+        emails_str = data['emails']
+        emails_list = [e.strip() for e in emails_str.split(',') if e.strip()]
+        sst.emails = json.dumps(emails_list)
+
     if 'actif' in data:
         sst.actif = data['actif']
-    if 'emails' in data:
-        sst.emails = json.dumps(data['emails'])
 
     db.session.commit()
 
-    return jsonify({'success': True, 'sst': sst.to_dict()})
+    log = ActivityLog(
+        user_id=current_user.id,
+        action='EDIT',
+        entity_type='SST',
+        entity_id=str(sst.id),
+        details=json.dumps({
+            'before': old_data,
+            'after': sst.to_dict()
+        }),
+        ip_address=request.remote_addr
+    )
+    db.session.add(log)
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'sst': sst.to_dict(),
+        'message': 'SST mis à jour avec succès'
+    })
+
+
+@bp.route('/sst/<int:sst_id>/delete', methods=['DELETE'])
+@login_required
+@permission_required('manage_rights')
+def delete_sst(sst_id):
+    """Supprimer un SST"""
+    sst = SST.query.get_or_404(sst_id)
+    sst_data = sst.to_dict()
+
+    db.session.delete(sst)
+    db.session.commit()
+
+    log = ActivityLog(
+        user_id=current_user.id,
+        action='DELETE',
+        entity_type='SST',
+        entity_id=str(sst_id),
+        details=json.dumps(sst_data),
+        ip_address=request.remote_addr
+    )
+    db.session.add(log)
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'message': 'SST supprimé avec succès'
+    })
 
 
 @bp.route('/announcements')

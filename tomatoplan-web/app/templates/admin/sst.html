@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+
+{% block title %}Gestion des SST - TomatoPlan Web{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-building"></i> Gestion des Sous-Traitants (SST)</h1>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-6">
+        <button class="btn btn-primary" onclick="openSSTModal()">
+            <i class="bi bi-plus-circle"></i> Nouveau SST
+        </button>
+    </div>
+    <div class="col-md-6 text-end">
+        <div class="form-check form-switch d-inline-block">
+            <input class="form-check-input" type="checkbox" id="showInactifs" onchange="toggleInactifs()">
+            <label class="form-check-label" for="showInactifs">Afficher inactifs</label>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Nom</th>
+                                <th>Téléphone</th>
+                                <th>Emails</th>
+                                <th>Statut</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sstBody">
+                            {% for sst in sst_list %}
+                            {% if sst.actif or not showInactifs %}
+                            <tr class="{{ 'text-muted' if not sst.actif else '' }}">
+                                <td><strong>{{ sst.nom }}</strong></td>
+                                <td>{{ sst.telephone or '-' }}</td>
+                                <td>
+                                    {% if sst.to_dict().emails %}
+                                        {{ sst.to_dict().emails|join(', ') if sst.to_dict().emails|length > 0 else '-' }}
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if sst.actif %}
+                                        <span class="badge bg-success">Actif</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Inactif</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary" onclick='editSST({{ sst.to_dict()|tojson }})' title="Modifier">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    {% if not sst.actif %}
+                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteSST({{ sst.id }}, '{{ sst.nom }}')" title="Supprimer">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center">Aucun SST trouvé</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal SST -->
+<div class="modal fade" id="sstModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="sstModalTitle">Nouveau SST</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="sstForm">
+                    <input type="hidden" id="sstId">
+                    <div class="mb-3">
+                        <label for="sstNom" class="form-label">Nom *</label>
+                        <input type="text" class="form-control" id="sstNom" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="sstTelephone" class="form-label">Téléphone</label>
+                        <input type="tel" class="form-control" id="sstTelephone" placeholder="+32 123 45 67 89">
+                    </div>
+                    <div class="mb-3">
+                        <label for="sstEmails" class="form-label">Emails</label>
+                        <input type="text" class="form-control" id="sstEmails" placeholder="email1@example.com, email2@example.com">
+                        <div class="form-text">Séparez les emails par des virgules</div>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="sstActif" checked>
+                        <label class="form-check-label" for="sstActif">Actif</label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="saveSST()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let sstModal;
+let showInactifs = false;
+
+document.addEventListener('DOMContentLoaded', function() {
+    sstModal = new bootstrap.Modal(document.getElementById('sstModal'));
+});
+
+function toggleInactifs() {
+    showInactifs = document.getElementById('showInactifs').checked;
+    window.location.reload();
+}
+
+function openSSTModal() {
+    document.getElementById('sstModalTitle').textContent = 'Nouveau SST';
+    document.getElementById('sstForm').reset();
+    document.getElementById('sstId').value = '';
+    document.getElementById('sstActif').checked = true;
+    sstModal.show();
+}
+
+function editSST(sst) {
+    document.getElementById('sstModalTitle').textContent = 'Modifier SST';
+    document.getElementById('sstId').value = sst.id;
+    document.getElementById('sstNom').value = sst.nom;
+    document.getElementById('sstTelephone').value = sst.telephone || '';
+    
+    // Joindre les emails avec des virgules
+    const emails = sst.emails && sst.emails.length > 0 ? sst.emails.join(', ') : '';
+    document.getElementById('sstEmails').value = emails;
+    
+    document.getElementById('sstActif').checked = sst.actif;
+    sstModal.show();
+}
+
+async function saveSST() {
+    const id = document.getElementById('sstId').value;
+    const data = {
+        nom: document.getElementById('sstNom').value,
+        telephone: document.getElementById('sstTelephone').value,
+        emails: document.getElementById('sstEmails').value,
+        actif: document.getElementById('sstActif').checked
+    };
+
+    if (!data.nom) {
+        alert('Le nom est obligatoire');
+        return;
+    }
+
+    try {
+        const url = id ? `/admin/sst/${id}/update` : '/admin/sst/create';
+        const method = id ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            const error = await response.json();
+            alert('Erreur: ' + (error.error || 'Erreur inconnue'));
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors de l\'enregistrement');
+    }
+}
+
+async function deleteSST(id, nom) {
+    if (!confirm(`Supprimer définitivement le SST "${nom}" ?\n\nATTENTION: Cela supprimera également tous les tarifs associés.`)) return;
+
+    try {
+        const response = await fetch(`/admin/sst/${id}/delete`, {method: 'DELETE'});
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            alert('Erreur lors de la suppression');
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        alert('Erreur lors de la suppression');
+    }
+}
+</script>
+
+{% endblock %}

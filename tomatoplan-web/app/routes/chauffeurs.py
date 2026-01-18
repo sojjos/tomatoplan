@@ -49,6 +49,7 @@ def create():
     chauffeur = Chauffeur(
         nom=data['nom'],
         sst=data.get('sst'),
+        telephone=data.get('telephone'),
         actif=data.get('actif', True),
         infos=data.get('infos')
     )
@@ -94,6 +95,8 @@ def update(chauffeur_id):
 
     if 'sst' in data:
         chauffeur.sst = data['sst']
+    if 'telephone' in data:
+        chauffeur.telephone = data['telephone']
     if 'actif' in data:
         chauffeur.actif = data['actif']
     if 'infos' in data:

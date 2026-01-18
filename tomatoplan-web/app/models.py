@@ -184,6 +184,7 @@ class SST(db.Model):
     nom = db.Column(db.String(100), nullable=False, unique=True, index=True)
     actif = db.Column(db.Boolean, default=True)
     emails = db.Column(db.Text, nullable=True)  # JSON array of emails
+    telephone = db.Column(db.String(20), nullable=True)  # Numéro de téléphone
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -197,7 +198,8 @@ class SST(db.Model):
             'id': self.id,
             'nom': self.nom,
             'actif': self.actif,
-            'emails': json.loads(self.emails) if self.emails else []
+            'emails': json.loads(self.emails) if self.emails else [],
+            'telephone': self.telephone
         }
 
     def __repr__(self):
