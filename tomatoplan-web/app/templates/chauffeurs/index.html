@@ -172,7 +172,7 @@ async function saveChauffeur() {
     }
 
     try {
-        const url = id ? \`/chauffeurs/\${id}/update\` : '/chauffeurs/create';
+        const url = id ? '/chauffeurs/' + id + '/update' : '/chauffeurs/create';
         const method = id ? 'PUT' : 'POST';
 
         const response = await fetch(url, {
@@ -194,10 +194,10 @@ async function saveChauffeur() {
 }
 
 async function deleteChauffeur(id, nom) {
-    if (!confirm(\`Supprimer définitivement le chauffeur "\${nom}" ?\`)) return;
+    if (!confirm('Supprimer définitivement le chauffeur "' + nom + '" ?')) return;
 
     try {
-        const response = await fetch(\`/chauffeurs/\${id}/delete\`, {method: 'DELETE'});
+        const response = await fetch('/chauffeurs/' + id + '/delete', {method: 'DELETE'});
         if (response.ok) {
             window.location.reload();
         } else {
