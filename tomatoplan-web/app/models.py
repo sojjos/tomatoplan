@@ -108,6 +108,7 @@ class Chauffeur(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     nom = db.Column(db.String(100), nullable=False, unique=True, index=True)
     sst = db.Column(db.String(100), nullable=True)
+    telephone = db.Column(db.String(20), nullable=True)
     actif = db.Column(db.Boolean, default=True)
     infos = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -122,6 +123,7 @@ class Chauffeur(db.Model):
             'id': self.id,
             'nom': self.nom,
             'sst': self.sst,
+            'telephone': self.telephone,
             'actif': self.actif,
             'infos': self.infos
         }
