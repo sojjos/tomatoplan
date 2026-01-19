@@ -5,8 +5,6 @@
 # Date: 2026-01-19
 ###############################################################################
 
-set -e
-
 # Couleurs
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -100,17 +98,32 @@ echo ""
 if [ -f "$DB_PATH" ]; then
     info "Base de données trouvée"
 
-    # Afficher le schéma actuel
+    # Utiliser Python pour afficher le schéma actuel
     info "Schéma actuel de la table chauffeurs:"
     echo ""
-    sqlite3 "$DB_PATH" "PRAGMA table_info(chauffeurs);" 2>/dev/null || {
-        error "Impossible de lire la base de données"
-        exit 1
-    }
+    python3 << PYEOF
+import sqlite3
+conn = sqlite3.connect('$DB_PATH')
+cursor = conn.cursor()
+cursor.execute("PRAGMA table_info(chauffeurs);")
+rows = cursor.fetchall()
+for row in rows:
+    print(f"  {row[0]}|{row[1]}|{row[2]}|{row[3]}|{row[4]}|{row[5]}")
+conn.close()
+PYEOF
     echo ""
 
-    # Compter les chauffeurs
-    CHAUFFEUR_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM chauffeurs;" 2>/dev/null || echo "0")
+    # Compter les chauffeurs avec Python
+    CHAUFFEUR_COUNT=$(python3 << PYEOF
+import sqlite3
+conn = sqlite3.connect('$DB_PATH')
+cursor = conn.cursor()
+cursor.execute("SELECT COUNT(*) FROM chauffeurs;")
+count = cursor.fetchone()[0]
+conn.close()
+print(count)
+PYEOF
+)
     info "Nombre de chauffeurs dans la base: $CHAUFFEUR_COUNT"
 else
     error "Base de données non trouvée: $DB_PATH"
@@ -130,10 +143,25 @@ info "Création de la sauvegarde: $BACKUP_PATH"
 cp "$DB_PATH" "$BACKUP_PATH"
 success "Sauvegarde créée"
 
-# Vérifier l'intégrité de la sauvegarde
+# Vérifier l'intégrité de la sauvegarde avec Python
 info "Vérification de l'intégrité de la sauvegarde..."
-sqlite3 "$BACKUP_PATH" "PRAGMA integrity_check;" > /dev/null
-success "Sauvegarde vérifiée"
+python3 << PYEOF
+import sqlite3
+conn = sqlite3.connect('$BACKUP_PATH')
+cursor = conn.cursor()
+cursor.execute("PRAGMA integrity_check;")
+result = cursor.fetchone()[0]
+conn.close()
+if result != 'ok':
+    exit(1)
+PYEOF
+
+if [ $? -eq 0 ]; then
+    success "Sauvegarde vérifiée"
+else
+    error "La sauvegarde semble corrompue"
+    exit 1
+fi
 
 echo ""
 echo "=================================================================="
@@ -191,12 +219,31 @@ echo ""
 
 info "Nouveau schéma de la table chauffeurs:"
 echo ""
-sqlite3 "$DB_PATH" "PRAGMA table_info(chauffeurs);"
+python3 << PYEOF
+import sqlite3
+conn = sqlite3.connect('$DB_PATH')
+cursor = conn.cursor()
+cursor.execute("PRAGMA table_info(chauffeurs);")
+rows = cursor.fetchall()
+for row in rows:
+    print(f"  {row[0]}|{row[1]}|{row[2]}|{row[3]}|{row[4]}|{row[5]}")
+conn.close()
+PYEOF
 echo ""
 
 # Vérifier que les colonnes requises existent
 info "Vérification des colonnes requises..."
-SCHEMA=$(sqlite3 "$DB_PATH" "PRAGMA table_info(chauffeurs);")
+SCHEMA=$(python3 << PYEOF
+import sqlite3
+conn = sqlite3.connect('$DB_PATH')
+cursor = conn.cursor()
+cursor.execute("PRAGMA table_info(chauffeurs);")
+rows = cursor.fetchall()
+conn.close()
+for row in rows:
+    print(row[1])
+PYEOF
+)
 
 if echo "$SCHEMA" | grep -q "prenom"; then
     success "Colonne 'prenom' présente"
@@ -220,7 +267,16 @@ else
 fi
 
 # Vérifier le nombre de chauffeurs après migration
-NEW_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM chauffeurs;" 2>/dev/null || echo "0")
+NEW_COUNT=$(python3 << PYEOF
+import sqlite3
+conn = sqlite3.connect('$DB_PATH')
+cursor = conn.cursor()
+cursor.execute("SELECT COUNT(*) FROM chauffeurs;")
+count = cursor.fetchone()[0]
+conn.close()
+print(count)
+PYEOF
+)
 info "Nombre de chauffeurs après migration: $NEW_COUNT"
 
 if [ "$NEW_COUNT" != "$CHAUFFEUR_COUNT" ]; then
