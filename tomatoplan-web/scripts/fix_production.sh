@@ -21,7 +21,7 @@ error() { echo -e "${RED}✗${NC} $1"; }
 PROD_DIR="/opt/tomatoplan/tomatoplan-web"
 DB_PATH="$PROD_DIR/tomatoplan.db"
 MIGRATION_SCRIPT="$PROD_DIR/migrations/migrate_chauffeur_schema.py"
-SERVICE_NAME="tomatoplan-web"
+SERVICE_NAME="tomatoplan"
 
 echo ""
 echo "=================================================================="
