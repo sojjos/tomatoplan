@@ -149,7 +149,7 @@ function openVoyageModal() {
 
 async function editVoyage(id) {
     try {
-        const response = await fetch(`/voyages/api/${id}`);
+        const response = await fetch('/voyages/api/' + id);
         const voyage = await response.json();
 
         document.getElementById('voyageModalTitle').textContent = 'Modifier voyage';
@@ -184,7 +184,7 @@ async function saveVoyage() {
     }
 
     try {
-        const url = id ? `/voyages/${id}/update` : '/voyages/create';
+        const url = id ? '/voyages/' + id + '/update' : '/voyages/create';
         const method = id ? 'PUT' : 'POST';
 
         const response = await fetch(url, {

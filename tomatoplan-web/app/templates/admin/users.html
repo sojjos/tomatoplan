@@ -168,7 +168,7 @@ async function saveUser() {
     }
 
     try {
-        const url = id ? \`/admin/users/\${id}/update\` : '/admin/users/create';
+        const url = id ? '/admin/users/' + id + '/update' : '/admin/users/create';
         const method = id ? 'PUT' : 'POST';
 
         const response = await fetch(url, {
@@ -190,11 +190,11 @@ async function saveUser() {
 }
 
 async function resetPassword(id, username) {
-    const newPassword = prompt(\`Nouveau mot de passe pour \${username}:\`);
+    const newPassword = prompt('Nouveau mot de passe pour ' + username + ':');
     if (!newPassword) return;
 
     try {
-        const response = await fetch(\`/admin/users/\${id}/reset-password\`, {
+        const response = await fetch('/admin/users/' + id + '/reset-password', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({password: newPassword})

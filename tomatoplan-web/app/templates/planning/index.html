@@ -420,7 +420,7 @@ async function saveMission() {
         effectue: document.getElementById('missionEffectue').checked
     };
 
-    const url = id ? `/planning/mission/${id}/update` : '/planning/mission/create';
+    const url = id ? '/planning/mission/' + id + '/update' : '/planning/mission/create';
     const method = id ? 'PUT' : 'POST';
 
     try {
@@ -449,7 +449,7 @@ async function deleteMission(id) {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cette mission ?')) return;
 
     try {
-        const response = await fetch(`/planning/mission/${id}/delete`, {
+        const response = await fetch('/planning/mission/' + id + '/delete', {
             method: 'DELETE'
         });
 
@@ -494,12 +494,12 @@ function filterMissions() {
 
 // Export Excel
 function exportExcel() {
-    window.location.href = `/api/export/missions?start=${selectedDate}&end=${selectedDate}&format=excel`;
+    window.location.href = '/api/export/missions?start=' + selectedDate + '&end=' + selectedDate + '&format=excel';
 }
 
 // Export PDF
 function exportPDF() {
-    window.location.href = `/api/export/missions?start=${selectedDate}&end=${selectedDate}&format=pdf`;
+    window.location.href = '/api/export/missions?start=' + selectedDate + '&end=' + selectedDate + '&format=pdf';
 }
 </script>
 {% endblock %}
