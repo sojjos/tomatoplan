@@ -34,6 +34,8 @@
                         <thead>
                             <tr>
                                 <th>Nom</th>
+                                <th>Prénom</th>
+                                <th>Téléphone</th>
                                 <th>SST</th>
                                 <th>Statut</th>
                                 <th>Infos</th>
@@ -46,7 +48,15 @@
                             {% for chauffeur in chauffeurs %}
                             <tr>
                                 <td><strong>{{ chauffeur.nom }}</strong></td>
-                                <td>{{ chauffeur.sst or '-' }}</td>
+                                <td>{{ chauffeur.prenom or '-' }}</td>
+                                <td>{{ chauffeur.telephone or '-' }}</td>
+                                <td>
+                                    {% if chauffeur.sst %}
+                                        <span class="badge bg-info">{{ chauffeur.sst.nom }}</span>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
                                 <td>
                                     {% if chauffeur.actif %}
                                         <span class="badge bg-success">Actif</span>
@@ -70,7 +80,7 @@
                             </tr>
                             {% else %}
                             <tr>
-                                <td colspan="{{ '5' if can_manage else '4' }}" class="text-center">Aucun chauffeur trouvé</td>
+                                <td colspan="{{ '7' if can_manage else '6' }}" class="text-center">Aucun chauffeur trouvé</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -98,8 +108,21 @@
                         <input type="text" class="form-control" id="chauffeurNom" required>
                     </div>
                     <div class="mb-3">
-                        <label for="chauffeurSST" class="form-label">SST</label>
-                        <input type="text" class="form-control" id="chauffeurSST">
+                        <label for="chauffeurPrenom" class="form-label">Prénom</label>
+                        <input type="text" class="form-control" id="chauffeurPrenom">
+                    </div>
+                    <div class="mb-3">
+                        <label for="chauffeurTelephone" class="form-label">Téléphone</label>
+                        <input type="tel" class="form-control" id="chauffeurTelephone" placeholder="+33 6 12 34 56 78">
+                    </div>
+                    <div class="mb-3">
+                        <label for="chauffeurSstId" class="form-label">SST</label>
+                        <select class="form-select" id="chauffeurSstId">
+                            <option value="">-- Aucun --</option>
+                            {% for sst in sst_list %}
+                            <option value="{{ sst.id }}">{{ sst.nom }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
                     <div class="mb-3">
                         <label for="chauffeurInfos" class="form-label">Informations</label>
@@ -143,7 +166,9 @@ function editChauffeur(chauffeur) {
     document.getElementById('chauffeurModalTitle').textContent = 'Modifier chauffeur';
     document.getElementById('chauffeurId').value = chauffeur.id;
     document.getElementById('chauffeurNom').value = chauffeur.nom;
-    document.getElementById('chauffeurSST').value = chauffeur.sst || '';
+    document.getElementById('chauffeurPrenom').value = chauffeur.prenom || '';
+    document.getElementById('chauffeurTelephone').value = chauffeur.telephone || '';
+    document.getElementById('chauffeurSstId').value = chauffeur.sst_id || '';
     document.getElementById('chauffeurInfos').value = chauffeur.infos || '';
     document.getElementById('chauffeurActif').checked = chauffeur.actif;
     chauffeurModal.show();
@@ -153,7 +178,9 @@ async function saveChauffeur() {
     const id = document.getElementById('chauffeurId').value;
     const data = {
         nom: document.getElementById('chauffeurNom').value,
-        sst: document.getElementById('chauffeurSST').value,
+        prenom: document.getElementById('chauffeurPrenom').value,
+        telephone: document.getElementById('chauffeurTelephone').value,
+        sst_id: document.getElementById('chauffeurSstId').value || null,
         infos: document.getElementById('chauffeurInfos').value,
         actif: document.getElementById('chauffeurActif').checked
     };

@@ -6,7 +6,7 @@ from flask_login import login_required, current_user
 from datetime import datetime
 import json
 
-from app.models import db, Chauffeur, DisponibiliteChauffeur, ActivityLog
+from app.models import db, Chauffeur, DisponibiliteChauffeur, ActivityLog, SST
 from app.permissions import permission_required
 
 bp = Blueprint('chauffeurs', __name__, url_prefix='/chauffeurs')
@@ -25,12 +25,14 @@ def index():
         chauffeurs = Chauffeur.query.order_by(Chauffeur.nom).all()
 
     can_manage = current_user.has_permission('manage_drivers')
+    sst_list = SST.query.filter_by(actif=True).order_by(SST.nom).all()
 
     return render_template(
         'chauffeurs/index.html',
         chauffeurs=chauffeurs,
         can_manage=can_manage,
-        actifs_only=actifs_only
+        actifs_only=actifs_only,
+        sst_list=sst_list
     )
 
 
