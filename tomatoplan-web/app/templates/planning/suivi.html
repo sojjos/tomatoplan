@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+
+{% block title %}Suivi des Missions - TomatoPlan Web{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-md-6">
+        <h1 class="mb-4"><i class="bi bi-diagram-3"></i> Suivi des Missions (Gantt)</h1>
+    </div>
+    <div class="col-md-6 text-end">
+        <div class="btn-group" role="group">
+            <button class="btn btn-outline-secondary" onclick="changeDate(-1)">
+                <i class="bi bi-chevron-left"></i> Jour précédent
+            </button>
+            <button class="btn btn-outline-primary" onclick="changeDate(0)">
+                <i class="bi bi-calendar-today"></i> Aujourd'hui
+            </button>
+            <button class="btn btn-outline-secondary" onclick="changeDate(1)">
+                Jour suivant <i class="bi bi-chevron-right"></i>
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-6">
+                        <label for="dateSelector" class="form-label">Date sélectionnée:</label>
+                        <input type="date" class="form-control" id="dateSelector"
+                               value="{{ selected_date.strftime('%Y-%m-%d') }}"
+                               onchange="changeDateTo(this.value)">
+                    </div>
+                    <div class="col-md-6">
+                        <div class="alert alert-info mb-0 mt-3 mt-md-0">
+                            <i class="bi bi-info-circle"></i>
+                            <strong>{{ missions_par_chauffeur|length }}</strong> chauffeur(s) avec des missions ce jour
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if missions_par_chauffeur %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Vue Gantt des missions du {{ selected_date.strftime('%d/%m/%Y') }}</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover">
+                        <thead>
+                            <tr class="table-light">
+                                <th style="width: 200px;">Chauffeur</th>
+                                <th>Timeline des missions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for chauffeur, missions in missions_par_chauffeur.items() %}
+                            <tr>
+                                <td>
+                                    <strong>{{ chauffeur }}</strong>
+                                    <br>
+                                    <small class="text-muted">{{ missions|length }} mission(s)</small>
+                                </td>
+                                <td>
+                                    <div class="gantt-timeline" style="position: relative; height: 60px; min-width: 100%;">
+                                        {% for mission in missions %}
+                                        <div class="gantt-item"
+                                             style="position: absolute; left: {{ ((mission.heure.hour * 60 + mission.heure.minute) / 1440 * 100) }}%;
+                                                    width: 3%; height: 40px; background-color: {{ '#007bff' if mission.statut == 'planifiee' else '#28a745' if mission.statut == 'en_cours' else '#6c757d' }};
+                                                    border-radius: 4px; padding: 5px; color: white; font-size: 11px; overflow: hidden;">
+                                            <div title="{{ mission.heure.strftime('%H:%M') }} - {{ mission.depart }} → {{ mission.arrivee }}">
+                                                <strong>{{ mission.heure.strftime('%H:%M') }}</strong><br>
+                                                <small>{{ mission.depart[:15] }}...</small>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+
+                                        <!-- Grille horaire -->
+                                        <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;">
+                                            {% for hour in range(0, 24, 3) %}
+                                            <div style="position: absolute; left: {{ (hour / 24 * 100) }}%; top: 0; bottom: 0; border-left: 1px dashed #ddd;">
+                                                <span style="position: absolute; top: -20px; left: 2px; font-size: 10px; color: #666;">{{ '%02d:00' % hour }}</span>
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="mt-3">
+                    <h6>Légende:</h6>
+                    <div class="d-flex gap-3">
+                        <div>
+                            <span class="badge" style="background-color: #007bff;">Planifiée</span>
+                        </div>
+                        <div>
+                            <span class="badge" style="background-color: #28a745;">En cours</span>
+                        </div>
+                        <div>
+                            <span class="badge" style="background-color: #6c757d;">Terminée</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Liste détaillée des missions -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Détails des missions</h5>
+            </div>
+            <div class="card-body">
+                {% for chauffeur, missions in missions_par_chauffeur.items() %}
+                <div class="mb-4">
+                    <h6 class="text-primary"><i class="bi bi-person-circle"></i> {{ chauffeur }}</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Heure</th>
+                                    <th>Départ</th>
+                                    <th>Arrivée</th>
+                                    <th>SST</th>
+                                    <th>Type</th>
+                                    <th>Statut</th>
+                                    <th>Infos</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for mission in missions %}
+                                <tr>
+                                    <td><strong>{{ mission.heure.strftime('%H:%M') }}</strong></td>
+                                    <td>{{ mission.depart }}</td>
+                                    <td>{{ mission.arrivee }}</td>
+                                    <td>
+                                        {% if mission.sst_obj %}
+                                            <span class="badge bg-info">{{ mission.sst_obj.nom }}</span>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-secondary">{{ mission.type_mission or 'Standard' }}</span>
+                                    </td>
+                                    <td>
+                                        {% if mission.statut == 'planifiee' %}
+                                            <span class="badge bg-primary">Planifiée</span>
+                                        {% elif mission.statut == 'en_cours' %}
+                                            <span class="badge bg-success">En cours</span>
+                                        {% elif mission.statut == 'terminee' %}
+                                            <span class="badge bg-secondary">Terminée</span>
+                                        {% else %}
+                                            <span class="badge bg-warning">{{ mission.statut }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if mission.infos %}
+                                            <small>{{ mission.infos[:50] }}{{ '...' if mission.infos|length > 50 }}</small>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i>
+            Aucune mission planifiée pour le {{ selected_date.strftime('%d/%m/%Y') }}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+function changeDate(delta) {
+    const dateInput = document.getElementById('dateSelector');
+    const currentDate = new Date(dateInput.value);
+    currentDate.setDate(currentDate.getDate() + delta);
+    const newDate = currentDate.toISOString().split('T')[0];
+    changeDateTo(newDate);
+}
+
+function changeDateTo(date) {
+    window.location.href = `/planning/suivi?date=${date}`;
+}
+</script>
+
+<style>
+.gantt-timeline {
+    background: linear-gradient(to right, #f8f9fa 0%, #ffffff 100%);
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+}
+
+.gantt-item {
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.gantt-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    z-index: 10;
+}
+</style>
+{% endblock %}

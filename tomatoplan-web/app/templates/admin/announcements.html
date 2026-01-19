@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block title %}Configuration des Annonces - TomatoPlan Web{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-megaphone"></i> Configuration des Annonces SST</h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Paramètres des annonces automatiques</h5>
+            </div>
+            <div class="card-body">
+                <form id="announcementConfigForm">
+                    <div class="mb-4">
+                        <label for="enabled" class="form-label">
+                            <strong>Activer les annonces automatiques</strong>
+                        </label>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="enabled"
+                                   {{ 'checked' if config.get('enabled', 'false') == 'true' }}>
+                            <label class="form-check-label" for="enabled">
+                                Les annonces seront envoyées automatiquement aux SST
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="announcement_time" class="form-label">
+                            <strong>Heure d'envoi des annonces</strong>
+                        </label>
+                        <input type="time" class="form-control" id="announcement_time"
+                               value="{{ config.get('announcement_time', '18:00') }}">
+                        <small class="text-muted">Heure à laquelle les annonces sont envoyées chaque jour</small>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="days_ahead" class="form-label">
+                            <strong>Nombre de jours à l'avance</strong>
+                        </label>
+                        <input type="number" class="form-control" id="days_ahead" min="1" max="7"
+                               value="{{ config.get('days_ahead', '1') }}">
+                        <small class="text-muted">Annoncer les missions pour J+X jours</small>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="email_subject" class="form-label">
+                            <strong>Sujet de l'email</strong>
+                        </label>
+                        <input type="text" class="form-control" id="email_subject"
+                               value="{{ config.get('email_subject', 'Missions du jour - TomatoPlan') }}">
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="email_template" class="form-label">
+                            <strong>Template de l'email</strong>
+                        </label>
+                        <textarea class="form-control" id="email_template" rows="8">{{ config.get('email_template', 'Bonjour,\n\nVoici les missions prévues pour le {date}:\n\n{missions}\n\nCordialement,\nL\'équipe TomatoPlan') }}</textarea>
+                        <small class="text-muted">
+                            Variables disponibles: {date}, {missions}, {sst_name}
+                        </small>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="smtp_server" class="form-label">
+                            <strong>Serveur SMTP</strong>
+                        </label>
+                        <input type="text" class="form-control" id="smtp_server"
+                               value="{{ config.get('smtp_server', '') }}"
+                               placeholder="smtp.example.com">
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="smtp_port" class="form-label">
+                                <strong>Port SMTP</strong>
+                            </label>
+                            <input type="number" class="form-control" id="smtp_port"
+                                   value="{{ config.get('smtp_port', '587') }}">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="smtp_use_tls" class="form-label">
+                                <strong>Utiliser TLS</strong>
+                            </label>
+                            <div class="form-check form-switch mt-2">
+                                <input class="form-check-input" type="checkbox" id="smtp_use_tls"
+                                       {{ 'checked' if config.get('smtp_use_tls', 'true') == 'true' }}>
+                                <label class="form-check-label" for="smtp_use_tls">Activer TLS</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="smtp_username" class="form-label">
+                            <strong>Nom d'utilisateur SMTP</strong>
+                        </label>
+                        <input type="text" class="form-control" id="smtp_username"
+                               value="{{ config.get('smtp_username', '') }}"
+                               placeholder="user@example.com">
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="smtp_password" class="form-label">
+                            <strong>Mot de passe SMTP</strong>
+                        </label>
+                        <input type="password" class="form-control" id="smtp_password"
+                               value="{{ config.get('smtp_password', '') }}"
+                               placeholder="••••••••">
+                        <small class="text-muted">Laissez vide pour ne pas modifier</small>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="from_email" class="form-label">
+                            <strong>Email expéditeur</strong>
+                        </label>
+                        <input type="email" class="form-control" id="from_email"
+                               value="{{ config.get('from_email', '') }}"
+                               placeholder="noreply@tomatoplan.com">
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="bi bi-save"></i> Enregistrer la configuration
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Aide</h5>
+            </div>
+            <div class="card-body">
+                <h6><i class="bi bi-info-circle"></i> Comment ça fonctionne ?</h6>
+                <p class="small">
+                    Les annonces automatiques permettent d'envoyer par email les missions planifiées
+                    aux différents SST chaque jour.
+                </p>
+
+                <h6 class="mt-3"><i class="bi bi-clock"></i> Planification</h6>
+                <p class="small">
+                    L'envoi se fait automatiquement à l'heure configurée. Les missions sont groupées
+                    par SST et envoyées aux adresses email configurées dans la gestion des SST.
+                </p>
+
+                <h6 class="mt-3"><i class="bi bi-envelope"></i> Configuration Email</h6>
+                <p class="small">
+                    Assurez-vous de configurer correctement votre serveur SMTP pour que les emails
+                    puissent être envoyés. Les paramètres courants sont:
+                </p>
+                <ul class="small">
+                    <li>Gmail: smtp.gmail.com:587 (TLS)</li>
+                    <li>Outlook: smtp-mail.outlook.com:587 (TLS)</li>
+                    <li>Office365: smtp.office365.com:587 (TLS)</li>
+                </ul>
+
+                <div class="alert alert-warning small mt-3">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <strong>Attention:</strong> Certains fournisseurs d'email nécessitent un
+                    "mot de passe d'application" au lieu du mot de passe principal.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('announcementConfigForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const config = {
+        enabled: document.getElementById('enabled').checked ? 'true' : 'false',
+        announcement_time: document.getElementById('announcement_time').value,
+        days_ahead: document.getElementById('days_ahead').value,
+        email_subject: document.getElementById('email_subject').value,
+        email_template: document.getElementById('email_template').value,
+        smtp_server: document.getElementById('smtp_server').value,
+        smtp_port: document.getElementById('smtp_port').value,
+        smtp_use_tls: document.getElementById('smtp_use_tls').checked ? 'true' : 'false',
+        smtp_username: document.getElementById('smtp_username').value,
+        from_email: document.getElementById('from_email').value
+    };
+
+    // Inclure le mot de passe seulement s'il n'est pas vide
+    const password = document.getElementById('smtp_password').value;
+    if (password) {
+        config.smtp_password = password;
+    }
+
+    fetch('/admin/announcements/update', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(config)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Configuration enregistrée avec succès');
+        } else {
+            alert('Erreur: ' + (data.error || 'Une erreur est survenue'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Une erreur est survenue lors de l\'enregistrement');
+    });
+});
+</script>
+{% endblock %}

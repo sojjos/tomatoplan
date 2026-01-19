@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+
+{% block title %}Gestion des SST - TomatoPlan Web{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-building"></i> Gestion des SST</h1>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-12">
+        <button class="btn btn-primary" onclick="openSstModal()">
+            <i class="bi bi-plus-circle"></i> Nouveau SST
+        </button>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Nom</th>
+                                <th>Emails</th>
+                                <th>Statut</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for sst in sst_list %}
+                            <tr>
+                                <td><strong>{{ sst.nom }}</strong></td>
+                                <td>
+                                    {% set emails = sst.get_emails() %}
+                                    {% if emails %}
+                                        {{ emails | join(', ') }}
+                                    {% else %}
+                                        <span class="text-muted">Aucun email</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if sst.actif %}
+                                        <span class="badge bg-success">Actif</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Inactif</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="editSst({{ sst.id }})">
+                                        <i class="bi bi-pencil"></i> Modifier
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-{{ 'danger' if sst.actif else 'success' }}" onclick="toggleSstStatus({{ sst.id }}, {{ sst.actif | lower }})">
+                                        <i class="bi bi-{{ 'x-circle' if sst.actif else 'check-circle' }}"></i>
+                                        {{ 'Désactiver' if sst.actif else 'Activer' }}
+                                    </button>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" class="text-center text-muted">Aucun SST enregistré</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal pour créer/modifier un SST -->
+<div class="modal fade" id="sstModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="sstModalTitle">Nouveau SST</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="sstForm">
+                    <input type="hidden" id="sst_id">
+                    <div class="mb-3">
+                        <label for="nom" class="form-label">Nom du SST <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="nom" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="emails" class="form-label">Emails (un par ligne)</label>
+                        <textarea class="form-control" id="emails" rows="4" placeholder="exemple@email.com"></textarea>
+                        <small class="text-muted">Entrez un email par ligne</small>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="actif" checked>
+                            <label class="form-check-label" for="actif">Actif</label>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-primary" onclick="saveSst()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let sstModal;
+
+document.addEventListener('DOMContentLoaded', function() {
+    sstModal = new bootstrap.Modal(document.getElementById('sstModal'));
+});
+
+function openSstModal() {
+    document.getElementById('sstForm').reset();
+    document.getElementById('sst_id').value = '';
+    document.getElementById('sstModalTitle').textContent = 'Nouveau SST';
+    document.getElementById('actif').checked = true;
+    sstModal.show();
+}
+
+function editSst(id) {
+    // Récupérer les données du SST depuis la table
+    const row = event.target.closest('tr');
+    const nom = row.querySelector('td:first-child strong').textContent;
+    const emailsText = row.querySelector('td:nth-child(2)').textContent.trim();
+    const actif = row.querySelector('.badge').classList.contains('bg-success');
+
+    document.getElementById('sst_id').value = id;
+    document.getElementById('nom').value = nom;
+
+    // Convertir les emails séparés par virgule en lignes
+    if (emailsText !== 'Aucun email') {
+        const emails = emailsText.split(',').map(e => e.trim()).join('\n');
+        document.getElementById('emails').value = emails;
+    }
+
+    document.getElementById('actif').checked = actif;
+    document.getElementById('sstModalTitle').textContent = 'Modifier le SST';
+    sstModal.show();
+}
+
+function saveSst() {
+    const id = document.getElementById('sst_id').value;
+    const nom = document.getElementById('nom').value.trim();
+    const emailsText = document.getElementById('emails').value.trim();
+    const actif = document.getElementById('actif').checked;
+
+    if (!nom) {
+        alert('Veuillez entrer un nom pour le SST');
+        return;
+    }
+
+    // Convertir les emails (un par ligne) en tableau
+    const emails = emailsText ? emailsText.split('\n').map(e => e.trim()).filter(e => e) : [];
+
+    const url = id ? `/admin/sst/${id}/update` : '/admin/sst/create';
+    const method = id ? 'PUT' : 'POST';
+
+    fetch(url, {
+        method: method,
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            nom: nom,
+            emails: emails,
+            actif: actif
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Erreur: ' + (data.error || 'Une erreur est survenue'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Une erreur est survenue');
+    });
+}
+
+function toggleSstStatus(id, currentStatus) {
+    if (confirm(`Voulez-vous vraiment ${currentStatus ? 'désactiver' : 'activer'} ce SST ?`)) {
+        fetch(`/admin/sst/${id}/update`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                actif: !currentStatus
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Erreur: ' + (data.error || 'Une erreur est survenue'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Une erreur est survenue');
+        });
+    }
+}
+</script>
+{% endblock %}
