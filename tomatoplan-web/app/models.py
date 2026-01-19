@@ -107,13 +107,16 @@ class Chauffeur(db.Model):
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     nom = db.Column(db.String(100), nullable=False, unique=True, index=True)
-    sst = db.Column(db.String(100), nullable=True)
-    actif = db.Column(db.Boolean, default=True)
+    prenom = db.Column(db.String(100), nullable=True)
+    sst_id = db.Column(db.Integer, db.ForeignKey('sst.id'), nullable=True, index=True)
+    telephone = db.Column(db.String(20), nullable=True)
+    actif = db.Column(db.Boolean, default=True, index=True)
     infos = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relations
+    sst = db.relationship('SST', backref='chauffeurs', lazy='joined')
     disponibilites = db.relationship('DisponibiliteChauffeur', backref='chauffeur', lazy='dynamic', cascade='all, delete-orphan')
 
     def to_dict(self):
@@ -121,9 +124,14 @@ class Chauffeur(db.Model):
         return {
             'id': self.id,
             'nom': self.nom,
-            'sst': self.sst,
+            'prenom': self.prenom,
+            'sst': self.sst.nom if self.sst else None,
+            'sst_id': self.sst_id,
+            'telephone': self.telephone,
             'actif': self.actif,
-            'infos': self.infos
+            'infos': self.infos,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
     def __repr__(self):
