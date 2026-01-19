@@ -159,7 +159,7 @@ function saveSst() {
     // Convertir les emails (un par ligne) en tableau
     const emails = emailsText ? emailsText.split('\n').map(e => e.trim()).filter(e => e) : [];
 
-    const url = id ? `/admin/sst/${id}/update` : '/admin/sst/create';
+    const url = id ? '/admin/sst/' + id + '/update' : '/admin/sst/create';
     const method = id ? 'PUT' : 'POST';
 
     fetch(url, {
@@ -188,8 +188,8 @@ function saveSst() {
 }
 
 function toggleSstStatus(id, currentStatus) {
-    if (confirm(`Voulez-vous vraiment ${currentStatus ? 'désactiver' : 'activer'} ce SST ?`)) {
-        fetch(`/admin/sst/${id}/update`, {
+    if (confirm('Voulez-vous vraiment ' + (currentStatus ? 'désactiver' : 'activer') + ' ce SST ?')) {
+        fetch('/admin/sst/' + id + '/update', {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
