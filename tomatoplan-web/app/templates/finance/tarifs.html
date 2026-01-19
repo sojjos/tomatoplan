@@ -1,87 +1,73 @@
 {% extends "base.html" %}
 
-{% block title %}Configuration Tarifs - TomatoPlan Web{% endblock %}
+{% block title %}Tarifs SST - TomatoPlan Web{% endblock %}
 
 {% block content %}
 <div class="row mb-3">
     <div class="col-12">
-        <h1 class="mb-4"><i class="bi bi-tags"></i> Configuration des Tarifs</h1>
+        <h1 class="mb-4"><i class="bi bi-tag"></i> Tarifs par SST</h1>
     </div>
 </div>
 
-<div class="row">
-    <div class="col-md-6 mb-4">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0"><i class="bi bi-tag"></i> Tarifs SST</h5>
-            </div>
-            <div class="card-body">
-                <p>Gérer les coûts des sous-traitants par voyage</p>
-                <a href="{{ url_for('finance.tarifs_sst') }}" class="btn btn-primary">
-                    <i class="bi bi-arrow-right-circle"></i> Accéder aux tarifs SST
-                </a>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-6 mb-4">
-        <div class="card">
-            <div class="card-header bg-success text-white">
-                <h5 class="mb-0"><i class="bi bi-cash-stack"></i> Revenus Palettes</h5>
-            </div>
-            <div class="card-body">
-                <p>Gérer les revenus par voyage et nombre de palettes</p>
-                <a href="{{ url_for('finance.revenus_palettes') }}" class="btn btn-success">
-                    <i class="bi bi-arrow-right-circle"></i> Accéder aux revenus palettes
-                </a>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row">
+<div class="row mb-3">
     <div class="col-12">
         <div class="alert alert-info">
-            <h5><i class="bi bi-info-circle"></i> Informations</h5>
-            <ul>
-                <li><strong>Tarifs SST</strong> : Définissent les coûts que vous facturent les sous-traitants pour chaque voyage</li>
-                <li><strong>Revenus Palettes</strong> : Définissent les revenus que vous recevez en fonction du voyage et du nombre de palettes transportées</li>
-                <li>Ces paramètres sont utilisés pour calculer automatiquement la marge de chaque mission</li>
-            </ul>
+            <i class="bi bi-info-circle"></i> Ces tarifs définissent les coûts que vous facturent les sous-traitants pour chaque voyage.
+            Ils sont utilisés pour calculer automatiquement la marge des missions.
         </div>
     </div>
 </div>
 
-{% if tarifs_par_sst %}
-<div class="row mt-4">
+{% for sst in sst_list %}
+<div class="row mb-4">
     <div class="col-12">
-        <h3>Résumé des Tarifs SST</h3>
-        <div class="table-responsive">
-            <table class="table table-sm table-hover">
-                <thead>
-                    <tr>
-                        <th>SST</th>
-                        <th>Nombre de tarifs configurés</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for sst in sst_list %}
-                    <tr>
-                        <td><span class="badge bg-info">{{ sst.nom }}</span></td>
-                        <td>{{ tarifs_par_sst.get(sst.id, [])|length }} voyage(s)</td>
-                        <td>
-                            <a href="{{ url_for('finance.tarifs_sst') }}" class="btn btn-sm btn-outline-primary">
-                                Gérer
-                            </a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">{{ sst.nom }}</h5>
+            </div>
+            <div class="card-body">
+                {% if tarifs_par_sst.get(sst.id) %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Voyage</th>
+                                <th>Tarif (€)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for tarif in tarifs_par_sst.get(sst.id, []) %}
+                            <tr>
+                                <td><span class="badge bg-secondary">{{ tarif.voyage }}</span></td>
+                                <td>{{ tarif.tarif }} €</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted mb-0">Aucun tarif configuré pour ce SST</p>
+                {% endif %}
+            </div>
         </div>
     </div>
 </div>
-{% endif %}
+{% else %}
+<div class="row">
+    <div class="col-12">
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle"></i> Aucun SST actif trouvé. Veuillez d'abord créer des SST depuis la page Administration.
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<div class="row mt-4">
+    <div class="col-12">
+        <a href="{{ url_for('finance.index') }}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Retour
+        </a>
+    </div>
+</div>
 
 {% endblock %}
