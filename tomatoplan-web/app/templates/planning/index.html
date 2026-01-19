@@ -383,14 +383,14 @@ async function onSSTChange() {
     const sstNom = document.getElementById('missionSST').value;
 
     // Charger les chauffeurs filtrés
-    await chargerChauffeursPar SST(sstNom);
+    await chargerChauffeursParSST(sstNom);
 
     // Recalculer les coûts
     await calculerMontantsAutomatiques();
 }
 
 // Charger les chauffeurs d'un SST spécifique
-async function chargerChauffeursPar SST(sstNom) {
+async function chargerChauffeursParSST(sstNom) {
     const selectChauffeur = document.getElementById('missionChauffeur');
 
     try {
@@ -547,7 +547,7 @@ function editMission(id) {
 
     // Charger les chauffeurs du SST sélectionné
     if (mission.sst) {
-        chargerChauffeursPar SST(mission.sst).then(() => {
+        chargerChauffeursParSST(mission.sst).then(() => {
             // Réassigner le chauffeur après le chargement
             document.getElementById('missionChauffeur').value = mission.chauffeur || '';
         });
