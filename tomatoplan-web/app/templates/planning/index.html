@@ -525,7 +525,6 @@ function editMission(id) {
     document.getElementById('missionCouts').value = mission.couts;
     document.getElementById('missionMarge').value = mission.marge;
     document.getElementById('missionInfos').value = mission.infos || '';
-}
     // ramasse est déterminé par le type du voyage
     document.getElementById('missionEffectue').checked = mission.effectue;
 
@@ -554,6 +553,7 @@ function editMission(id) {
     }
 
     new bootstrap.Modal(document.getElementById('missionModal')).show();
+}
 
 // Sauvegarder la mission
 async function saveMission() {
