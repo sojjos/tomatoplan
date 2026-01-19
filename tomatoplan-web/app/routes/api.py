@@ -114,3 +114,50 @@ def health():
         'status': 'ok',
         'timestamp': datetime.now().isoformat()
     })
+
+
+@bp.route('/calcul-mission')
+@login_required
+def calcul_mission():
+    """Calcule automatiquement les revenus, coûts et marge d'une mission"""
+    from app.utils.calculs import calculer_mission_complete
+
+    voyage_code = request.args.get('voyage')
+    sst_nom = request.args.get('sst')
+    palettes = request.args.get('palettes', type=int, default=0)
+
+    if not voyage_code or not sst_nom:
+        return jsonify({'error': 'Paramètres manquants'}), 400
+
+    try:
+        calculs = calculer_mission_complete(voyage_code, palettes, sst_nom)
+        return jsonify(calculs)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/chauffeurs-par-sst')
+@login_required
+def chauffeurs_par_sst():
+    """Retourne les chauffeurs filtrés par SST"""
+    sst_nom = request.args.get('sst')
+
+    if not sst_nom:
+        # Retourner tous les chauffeurs actifs
+        chauffeurs = Chauffeur.query.filter_by(actif=True).order_by(Chauffeur.nom).all()
+    else:
+        # Trouver le SST
+        sst = SST.query.filter_by(nom=sst_nom).first()
+        if not sst:
+            return jsonify({'error': 'SST non trouvé'}), 404
+
+        # Retourner uniquement les chauffeurs de ce SST
+        chauffeurs = Chauffeur.query.filter_by(
+            sst_id=sst.id,
+            actif=True
+        ).order_by(Chauffeur.nom).all()
+
+    return jsonify({
+        'chauffeurs': [{'id': c.id, 'nom': c.nom, 'prenom': c.prenom} for c in chauffeurs]
+    })
+
