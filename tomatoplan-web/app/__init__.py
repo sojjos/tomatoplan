@@ -78,6 +78,30 @@ def create_app(config_name='default'):
             get_role_name=get_role_name
         )
 
+    # Enregistrer les filtres Jinja2 personnalisés
+    @app.template_filter('date')
+    def date_filter(value, format='%Y-%m-%d'):
+        """Filtre pour formater les dates dans les templates"""
+        from datetime import datetime
+
+        # Si c'est la chaîne "now", retourner la date actuelle
+        if value == 'now':
+            return datetime.now().strftime(format)
+
+        # Si c'est déjà un objet datetime
+        if isinstance(value, datetime):
+            return value.strftime(format)
+
+        # Si c'est une chaîne, essayer de la parser
+        if isinstance(value, str):
+            try:
+                dt = datetime.fromisoformat(value)
+                return dt.strftime(format)
+            except:
+                return value
+
+        return value
+
     # Créer les tables si elles n'existent pas
     with app.app_context():
         db.create_all()
