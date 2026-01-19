@@ -233,27 +233,25 @@
                     </div>
 
                     <div class="row">
+                    <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Voyage</label>
+                            <label class="form-label">Voyage *</label>
                             <select class="form-select" id="missionVoyage" required>
                                 <option value="">Sélectionner...</option>
                                 {% for voyage in voyages %}
-                                    <option value="{{ voyage.code }}">{{ voyage.code }}</option>
+                                    <option value="{{ voyage.code }}" data-type="{{ voyage.type }}" data-pays="{{ voyage.country }}">{{ voyage.code }} ({{ voyage.type }})</option>
                                 {% endfor %}
                             </select>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Type</label>
-                            <select class="form-select" id="missionType" required>
-                                <option value="LIVRAISON">LIVRAISON</option>
-                                <option value="RAMASSE">RAMASSE</option>
-                            </select>
+                            <label class="form-label">Type <small class="text-muted">(automatique)</small></label>
+                            <input type="text" class="form-control" id="missionType" readonly style="background-color: #e9ecef;">
                         </div>
                     </div>
 
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">SST</label>
+                            <label class="form-label">SST *</label>
                             <select class="form-select" id="missionSST" required>
                                 <option value="">Sélectionner...</option>
                                 {% for sst in sst_list %}
@@ -262,12 +260,9 @@
                             </select>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Chauffeur</label>
+                            <label class="form-label">Chauffeur <small class="text-muted">(filtré par SST)</small></label>
                             <select class="form-select" id="missionChauffeur">
                                 <option value="">Non assigné</option>
-                                {% for chauffeur in chauffeurs %}
-                                    <option value="{{ chauffeur.nom }}">{{ chauffeur.nom }}</option>
-                                {% endfor %}
                             </select>
                         </div>
                     </div>
@@ -278,13 +273,8 @@
                             <input type="number" class="form-control" id="missionPalettes" min="0" value="0">
                         </div>
                         <div class="col-md-4 mb-3">
-                            <label class="form-label">Pays</label>
-                            <select class="form-select" id="missionPays">
-                                <option value="Belgique">Belgique</option>
-                                <option value="France">France</option>
-                                <option value="Pays-Bas">Pays-Bas</option>
-                                <option value="Allemagne">Allemagne</option>
-                            </select>
+                            <label class="form-label">Pays <small class="text-muted">(automatique)</small></label>
+                            <input type="text" class="form-control" id="missionPays" readonly style="background-color: #e9ecef;">
                         </div>
                         <div class="col-md-4 mb-3">
                             <label class="form-label">Numéro</label>
@@ -292,31 +282,33 @@
                         </div>
                     </div>
 
-                    <div class="row">
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Revenus (€)</label>
-                            <input type="number" class="form-control" id="missionRevenus" step="0.01" value="0">
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Coûts (€)</label>
-                            <input type="number" class="form-control" id="missionCouts" step="0.01" value="0">
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Marge (€)</label>
-                            <input type="number" class="form-control" id="missionMarge" step="0.01" value="0" readonly>
+                    <div class="alert alert-info mb-3">
+                        <div class="row align-items-center">
+                            <div class="col-12 mb-2">
+                                <strong><i class="bi bi-calculator"></i> Calculs automatiques</strong>
+                                <small class="text-muted d-block">Basés sur les tarifs configurés dans Finance</small>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1">Revenus</label>
+                                <div class="fs-5 fw-bold text-primary" id="displayRevenus">0.00 €</div>
+                                <input type="hidden" id="missionRevenus" value="0">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1">Coûts SST</label>
+                                <div class="fs-5 fw-bold text-danger" id="displayCouts">0.00 €</div>
+                                <input type="hidden" id="missionCouts" value="0">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small mb-1">Marge</label>
+                                <div class="fs-5 fw-bold text-success" id="displayMarge">0.00 €</div>
+                                <input type="hidden" id="missionMarge" value="0">
+                            </div>
                         </div>
                     </div>
 
                     <div class="mb-3">
                         <label class="form-label">Informations</label>
                         <textarea class="form-control" id="missionInfos" rows="2"></textarea>
-                    </div>
-
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" id="missionRamasse">
-                        <label class="form-check-label" for="missionRamasse">
-                            Ramasse
-                        </label>
                     </div>
 
                     <div class="form-check mb-3">
@@ -343,15 +335,145 @@ let missions = {{ missions|tojson|safe }};
 const canEdit = {{ 'true' if can_edit else 'false' }};
 const selectedDate = '{{ selected_date }}';
 
-// Auto-calcul de la marge
-document.getElementById('missionRevenus').addEventListener('input', calculateMarge);
-document.getElementById('missionCouts').addEventListener('input', calculateMarge);
 
-function calculateMarge() {
-    const revenus = parseFloat(document.getElementById('missionRevenus').value) || 0;
-    const couts = parseFloat(document.getElementById('missionCouts').value) || 0;
-    document.getElementById('missionMarge').value = (revenus - couts).toFixed(2);
+// =============================================================================
+// CALCULS AUTOMATIQUES - LOGIQUE MÉTIER
+// =============================================================================
+
+// Événements pour mise à jour automatique
+document.addEventListener('DOMContentLoaded', function() {
+    const voyageSelect = document.getElementById('missionVoyage');
+    const sstSelect = document.getElementById('missionSST');
+    const palettesInput = document.getElementById('missionPalettes');
+
+    if (voyageSelect) {
+        voyageSelect.addEventListener('change', onVoyageChange);
+    }
+    if (sstSelect) {
+        sstSelect.addEventListener('change', onSSTChange);
+    }
+    if (palettesInput) {
+        palettesInput.addEventListener('change', calculerMontantsAutomatiques);
+    }
+});
+
+// Quand le voyage change: mettre à jour type et pays
+function onVoyageChange() {
+    const select = document.getElementById('missionVoyage');
+    const selectedOption = select.options[select.selectedIndex];
+
+    if (selectedOption && selectedOption.value) {
+        // Récupérer le type et le pays du voyage
+        const type = selectedOption.dataset.type || '';
+        const pays = selectedOption.dataset.pays || '';
+
+        document.getElementById('missionType').value = type;
+        document.getElementById('missionPays').value = pays;
+    } else {
+        document.getElementById('missionType').value = '';
+        document.getElementById('missionPays').value = '';
+    }
+
+    // Recalculer les montants
+    calculerMontantsAutomatiques();
 }
+
+// Quand le SST change: filtrer les chauffeurs et recalculer les coûts
+async function onSSTChange() {
+    const sstNom = document.getElementById('missionSST').value;
+
+    // Charger les chauffeurs filtrés
+    await chargerChauffeursPar SST(sstNom);
+
+    // Recalculer les coûts
+    await calculerMontantsAutomatiques();
+}
+
+// Charger les chauffeurs d'un SST spécifique
+async function chargerChauffeursPar SST(sstNom) {
+    const selectChauffeur = document.getElementById('missionChauffeur');
+
+    try {
+        const url = sstNom
+            ? '/api/chauffeurs-par-sst?sst=' + encodeURIComponent(sstNom)
+            : '/api/chauffeurs-par-sst';
+
+        const response = await fetch(url);
+        const data = await response.json();
+
+        // Vider et recréer la liste
+        selectChauffeur.innerHTML = '<option value="">Non assigné</option>';
+
+        data.chauffeurs.forEach(function(chauffeur) {
+            const option = document.createElement('option');
+            option.value = chauffeur.nom;
+            option.textContent = chauffeur.nom + (chauffeur.prenom ? ' ' + chauffeur.prenom : '');
+            selectChauffeur.appendChild(option);
+        });
+
+    } catch (error) {
+        console.error('Erreur chargement chauffeurs:', error);
+    }
+}
+
+// Calculer automatiquement revenus, coûts et marge
+async function calculerMontantsAutomatiques() {
+    const voyage = document.getElementById('missionVoyage').value;
+    const sst = document.getElementById('missionSST').value;
+    const palettes = parseInt(document.getElementById('missionPalettes').value) || 0;
+
+    if (!voyage || !sst) {
+        // Réinitialiser l'affichage
+        document.getElementById('displayRevenus').textContent = '0.00 €';
+        document.getElementById('displayCouts').textContent = '0.00 €';
+        document.getElementById('displayMarge').textContent = '0.00 €';
+        document.getElementById('displayMarge').className = 'fs-5 fw-bold text-secondary';
+        document.getElementById('missionRevenus').value = 0;
+        document.getElementById('missionCouts').value = 0;
+        document.getElementById('missionMarge').value = 0;
+        return;
+    }
+
+    try {
+        const url = '/api/calcul-mission?voyage=' + encodeURIComponent(voyage) +
+                    '&sst=' + encodeURIComponent(sst) +
+                    '&palettes=' + palettes;
+
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.error) {
+            console.error('Erreur calcul:', data.error);
+            return;
+        }
+
+        // Mettre à jour l'affichage
+        document.getElementById('displayRevenus').textContent = data.revenus.toFixed(2) + ' €';
+        document.getElementById('displayCouts').textContent = data.couts.toFixed(2) + ' €';
+        document.getElementById('displayMarge').textContent = data.marge.toFixed(2) + ' €';
+
+        // Mettre à jour les champs cachés pour la sauvegarde
+        document.getElementById('missionRevenus').value = data.revenus;
+        document.getElementById('missionCouts').value = data.couts;
+        document.getElementById('missionMarge').value = data.marge;
+
+        // Colorer la marge selon le résultat
+        const margeElement = document.getElementById('displayMarge');
+        if (data.marge > 0) {
+            margeElement.className = 'fs-5 fw-bold text-success';
+        } else if (data.marge < 0) {
+            margeElement.className = 'fs-5 fw-bold text-danger';
+        } else {
+            margeElement.className = 'fs-5 fw-bold text-secondary';
+        }
+
+    } catch (error) {
+        console.error('Erreur lors du calcul:', error);
+    }
+}
+
+// =============================================================================
+
 
 // Changer de date
 function changeDate(delta) {
@@ -370,6 +492,16 @@ function openCreateModal() {
     document.getElementById('missionForm').reset();
     document.getElementById('missionId').value = '';
     document.getElementById('missionDate').value = selectedDate;
+
+    // Réinitialiser l'affichage des calculs
+    document.getElementById('displayRevenus').textContent = '0.00 €';
+    document.getElementById('displayCouts').textContent = '0.00 €';
+    document.getElementById('displayMarge').textContent = '0.00 €';
+    document.getElementById('displayMarge').className = 'fs-5 fw-bold text-secondary';
+    document.getElementById('missionRevenus').value = 0;
+    document.getElementById('missionCouts').value = 0;
+    document.getElementById('missionMarge').value = 0;
+
     new bootstrap.Modal(document.getElementById('missionModal')).show();
 }
 
@@ -393,11 +525,35 @@ function editMission(id) {
     document.getElementById('missionCouts').value = mission.couts;
     document.getElementById('missionMarge').value = mission.marge;
     document.getElementById('missionInfos').value = mission.infos || '';
-    document.getElementById('missionRamasse').checked = mission.ramasse;
+}
+    // ramasse est déterminé par le type du voyage
     document.getElementById('missionEffectue').checked = mission.effectue;
 
+    // Mettre à jour l'affichage des calculs
+    document.getElementById('displayRevenus').textContent = (mission.revenus || 0).toFixed(2) + ' €';
+    document.getElementById('displayCouts').textContent = (mission.couts || 0).toFixed(2) + ' €';
+    document.getElementById('displayMarge').textContent = (mission.marge || 0).toFixed(2) + ' €';
+
+    // Colorer la marge
+    const margeElement = document.getElementById('displayMarge');
+    const marge = mission.marge || 0;
+    if (marge > 0) {
+        margeElement.className = 'fs-5 fw-bold text-success';
+    } else if (marge < 0) {
+        margeElement.className = 'fs-5 fw-bold text-danger';
+    } else {
+        margeElement.className = 'fs-5 fw-bold text-secondary';
+    }
+
+    // Charger les chauffeurs du SST sélectionné
+    if (mission.sst) {
+        chargerChauffeursPar SST(mission.sst).then(() => {
+            // Réassigner le chauffeur après le chargement
+            document.getElementById('missionChauffeur').value = mission.chauffeur || '';
+        });
+    }
+
     new bootstrap.Modal(document.getElementById('missionModal')).show();
-}
 
 // Sauvegarder la mission
 async function saveMission() {
@@ -416,7 +572,7 @@ async function saveMission() {
         couts: parseFloat(document.getElementById('missionCouts').value) || 0,
         marge: parseFloat(document.getElementById('missionMarge').value) || 0,
         infos: document.getElementById('missionInfos').value,
-        ramasse: document.getElementById('missionRamasse').checked,
+        ramasse: document.getElementById('missionType').value === 'RAMASSE',
         effectue: document.getElementById('missionEffectue').checked
     };
 
