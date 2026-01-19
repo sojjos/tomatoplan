@@ -191,6 +191,103 @@ def disponibilites():
     )
 
 
+@bp.route('/api/disponibilites', methods=['GET'])
+@login_required
+@permission_required('view_drivers')
+def api_disponibilites():
+    """API pour récupérer les disponibilités d'une date"""
+    date_str = request.args.get('date')
+    if not date_str:
+        return jsonify({'error': 'Date requise'}), 400
+
+    try:
+        selected_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({'error': 'Format de date invalide'}), 400
+
+    # Récupérer tous les chauffeurs actifs
+    chauffeurs = Chauffeur.query.filter_by(actif=True).order_by(Chauffeur.nom).all()
+
+    result = []
+    for chauffeur in chauffeurs:
+        dispo = DisponibiliteChauffeur.query.filter_by(
+            chauffeur_id=chauffeur.id,
+            date=selected_date
+        ).first()
+
+        result.append({
+            'chauffeur_id': chauffeur.id,
+            'chauffeur_nom': f"{chauffeur.nom} {chauffeur.prenom or ''}".strip(),
+            'sst_nom': chauffeur.sst.nom if chauffeur.sst else None,
+            'disponible': dispo.disponible if dispo else True,  # Par défaut disponible
+            'raison': dispo.raison if dispo else None
+        })
+
+    return jsonify(result)
+
+
+@bp.route('/api/disponibilites', methods=['POST'])
+@login_required
+@permission_required('edit_driver_planning')
+def api_update_disponibilite():
+    """API pour mettre à jour une disponibilité"""
+    data = request.get_json()
+
+    chauffeur_id = data.get('chauffeur_id')
+    date_str = data.get('date')
+    disponible = data.get('disponible', True)
+    raison = data.get('raison')
+
+    if not chauffeur_id or not date_str:
+        return jsonify({'error': 'Paramètres manquants'}), 400
+
+    try:
+        date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({'error': 'Format de date invalide'}), 400
+
+    # Chercher ou créer la disponibilité
+    dispo = DisponibiliteChauffeur.query.filter_by(
+        chauffeur_id=chauffeur_id,
+        date=date
+    ).first()
+
+    if dispo:
+        dispo.disponible = disponible
+        dispo.raison = raison
+    else:
+        dispo = DisponibiliteChauffeur(
+            chauffeur_id=chauffeur_id,
+            date=date,
+            disponible=disponible,
+            raison=raison
+        )
+        db.session.add(dispo)
+
+    db.session.commit()
+
+    # Log l'activité
+    log = ActivityLog(
+        user_id=current_user.id,
+        action='EDIT',
+        entity_type='DisponibiliteChauffeur',
+        details=json.dumps({
+            'chauffeur_id': chauffeur_id,
+            'date': date.isoformat(),
+            'disponible': disponible,
+            'raison': raison
+        }),
+        ip_address=request.remote_addr
+    )
+    db.session.add(log)
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'message': 'Disponibilité mise à jour'
+    })
+
+
 @bp.route('/disponibilites/update', methods=['POST'])
 @login_required
 @permission_required('edit_driver_planning')

@@ -58,7 +58,7 @@ async function loadDisponibilites() {
     }
 
     try {
-        const response = await fetch(`/chauffeurs/api/disponibilites?date=${date}`);
+        const response = await fetch('/chauffeurs/api/disponibilites?date=' + date);
         const data = await response.json();
 
         if (data.length === 0) {
@@ -66,21 +66,21 @@ async function loadDisponibilites() {
             return;
         }
 
-        tbody.innerHTML = data.map(d => `
-            <tr>
-                <td>${d.chauffeur_nom}</td>
-                <td>${d.sst_nom || '-'}</td>
-                <td>
-                    ${d.disponible ? '<span class="badge bg-success">Disponible</span>' : '<span class="badge bg-danger">Indisponible</span>'}
-                </td>
-                <td>${d.raison || '-'}</td>
-                <td>
-                    <button class="btn btn-sm btn-outline-primary" onclick="toggleDisponibilite(${d.chauffeur_id}, '${date}', ${!d.disponible})">
-                        ${d.disponible ? 'Marquer indisponible' : 'Marquer disponible'}
-                    </button>
-                </td>
-            </tr>
-        `).join('');
+        tbody.innerHTML = data.map(d => 
+            '<tr>' +
+                '<td>' + d.chauffeur_nom + '</td>' +
+                '<td>' + (d.sst_nom || '-') + '</td>' +
+                '<td>' +
+                    (d.disponible ? '<span class="badge bg-success">Disponible</span>' : '<span class="badge bg-danger">Indisponible</span>') +
+                '</td>' +
+                '<td>' + (d.raison || '-') + '</td>' +
+                '<td>' +
+                    '<button class="btn btn-sm btn-outline-primary" onclick="toggleDisponibilite(' + d.chauffeur_id + ', \'' + date + '\', ' + !d.disponible + ')">' +
+                        (d.disponible ? 'Marquer indisponible' : 'Marquer disponible') +
+                    '</button>' +
+                '</td>' +
+            '</tr>'
+        ).join('');
     } catch (error) {
         console.error('Erreur:', error);
         tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Erreur de chargement</td></tr>';
