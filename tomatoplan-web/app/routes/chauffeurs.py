@@ -48,7 +48,9 @@ def create():
 
     chauffeur = Chauffeur(
         nom=data['nom'],
-        sst=data.get('sst'),
+        prenom=data.get('prenom'),
+        sst_id=data.get('sst_id'),
+        telephone=data.get('telephone'),
         actif=data.get('actif', True),
         infos=data.get('infos')
     )
@@ -92,8 +94,12 @@ def update(chauffeur_id):
             return jsonify({'error': 'Un chauffeur avec ce nom existe déjà'}), 400
         chauffeur.nom = data['nom']
 
-    if 'sst' in data:
-        chauffeur.sst = data['sst']
+    if 'prenom' in data:
+        chauffeur.prenom = data['prenom']
+    if 'sst_id' in data:
+        chauffeur.sst_id = data['sst_id']
+    if 'telephone' in data:
+        chauffeur.telephone = data['telephone']
     if 'actif' in data:
         chauffeur.actif = data['actif']
     if 'infos' in data:

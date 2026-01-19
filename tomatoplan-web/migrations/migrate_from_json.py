@@ -60,7 +60,7 @@ def load_json_file(filepath):
         return None
 
 
-def migrate_chauffeurs(data_dir):
+def migrate_chauffeurs(data_dir, sst_ids):
     """Migre les chauffeurs"""
     print_info("Migration des chauffeurs...")
 
@@ -72,10 +72,19 @@ def migrate_chauffeurs(data_dir):
 
     count = 0
     for chauffeur_data in data:
+        # Convertir le nom SST en ID si présent
+        sst_id = None
+        if chauffeur_data.get('sst') and chauffeur_data['sst'] in sst_ids:
+            sst_id = sst_ids[chauffeur_data['sst']]
+        elif chauffeur_data.get('sst_id'):
+            sst_id = chauffeur_data['sst_id']
+
         chauffeur = Chauffeur(
             id=chauffeur_data.get('id'),
             nom=chauffeur_data['nom'],
-            sst=chauffeur_data.get('sst'),
+            prenom=chauffeur_data.get('prenom'),
+            sst_id=sst_id,
+            telephone=chauffeur_data.get('telephone'),
             actif=chauffeur_data.get('actif', True),
             infos=chauffeur_data.get('infos')
         )
@@ -331,10 +340,13 @@ def main():
 
         # Migration dans l'ordre des dépendances
         try:
-            total_count += migrate_chauffeurs(data_dir)
-            total_count += migrate_voyages(data_dir)
+            # Migrer les SST d'abord (nécessaire pour les chauffeurs)
             sst_ids = migrate_sst(data_dir)
             total_count += len(sst_ids)
+
+            # Puis migrer les chauffeurs avec les sst_ids
+            total_count += migrate_chauffeurs(data_dir, sst_ids)
+            total_count += migrate_voyages(data_dir)
             total_count += migrate_tarifs_sst(data_dir, sst_ids)
             total_count += migrate_revenus_palettes(data_dir)
             total_count += migrate_missions(data_dir)

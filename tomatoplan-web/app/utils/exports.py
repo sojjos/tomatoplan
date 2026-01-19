@@ -219,7 +219,7 @@ def export_chauffeurs_to_excel(chauffeurs):
     ws.title = "Chauffeurs"
 
     # En-têtes
-    headers = ['Nom', 'SST', 'Actif', 'Informations']
+    headers = ['Nom', 'Prénom', 'SST', 'Téléphone', 'Actif', 'Informations']
     for col_num, header in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col_num)
         cell.value = header
@@ -228,15 +228,19 @@ def export_chauffeurs_to_excel(chauffeurs):
     # Données
     for row_num, chauffeur in enumerate(chauffeurs, 2):
         ws.cell(row=row_num, column=1, value=chauffeur.nom)
-        ws.cell(row=row_num, column=2, value=chauffeur.sst or '')
-        ws.cell(row=row_num, column=3, value='Oui' if chauffeur.actif else 'Non')
-        ws.cell(row=row_num, column=4, value=chauffeur.infos or '')
+        ws.cell(row=row_num, column=2, value=chauffeur.prenom or '')
+        ws.cell(row=row_num, column=3, value=chauffeur.sst.nom if chauffeur.sst else '')
+        ws.cell(row=row_num, column=4, value=chauffeur.telephone or '')
+        ws.cell(row=row_num, column=5, value='Oui' if chauffeur.actif else 'Non')
+        ws.cell(row=row_num, column=6, value=chauffeur.infos or '')
 
     # Ajuster la largeur des colonnes
     ws.column_dimensions['A'].width = 25
     ws.column_dimensions['B'].width = 20
-    ws.column_dimensions['C'].width = 10
-    ws.column_dimensions['D'].width = 40
+    ws.column_dimensions['C'].width = 20
+    ws.column_dimensions['D'].width = 15
+    ws.column_dimensions['E'].width = 10
+    ws.column_dimensions['F'].width = 40
 
     # Sauvegarder
     export_dir = current_app.config['EXPORT_FOLDER']
